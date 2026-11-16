@@ -14,6 +14,21 @@ interface FrameSurfaceProps {
   onTelemetry?: (value: FrameTelemetry) => void;
 }
 
+export function parseFrameHeaders(headers: Headers): {
+  frameIndex: number | null;
+  publishedAt: number | null;
+} {
+  const rawFrameIndex = headers.get("X-Frame-Index");
+  const rawPublishedAt = headers.get("X-Frame-Published-At");
+  const frameIndex = rawFrameIndex === null ? NaN : Number(rawFrameIndex);
+  const publishedAt = rawPublishedAt === null ? NaN : Number(rawPublishedAt);
+  return {
+    frameIndex: Number.isFinite(frameIndex) ? frameIndex : null,
+    publishedAt:
+      Number.isFinite(publishedAt) && publishedAt > 0 ? publishedAt : null,
+  };
+}
+
 function waitForNextFrame(delayMs: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const timer = window.setTimeout(resolve, delayMs);
@@ -75,18 +90,16 @@ export const FrameSurface = memo(function FrameSurface({
                 const now = performance.now();
                 const telemetryElapsed = now - telemetryStartedAt;
                 if (telemetryElapsed >= 1000) {
-                  const publishedAt = Number(
-                    response.headers.get("X-Frame-Published-At"),
-                  );
-                  const frameIndex = Number(
-                    response.headers.get("X-Frame-Index"),
+                  const { publishedAt, frameIndex } = parseFrameHeaders(
+                    response.headers,
                   );
                   telemetryRef.current?.({
                     displayedFps: (displayedFrames * 1000) / telemetryElapsed,
-                    frameAgeMs: Number.isFinite(publishedAt)
-                      ? Math.max(0, Date.now() - publishedAt * 1000)
-                      : null,
-                    frameIndex: Number.isFinite(frameIndex) ? frameIndex : null,
+                    frameAgeMs:
+                      publishedAt === null
+                        ? null
+                        : Math.max(0, Date.now() - publishedAt * 1000),
+                    frameIndex,
                   });
                   telemetryStartedAt = now;
                   displayedFrames = 0;

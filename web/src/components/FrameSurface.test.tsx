@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 
-import { FrameSurface } from "./FrameSurface";
+import { FrameSurface, parseFrameHeaders } from "./FrameSurface";
 
 function frameResponse(index = 1, publishedAt = Date.now() / 1000): Response {
   return new Response(new Blob([`frame-${index}`], { type: "image/jpeg" }), {
@@ -19,6 +19,21 @@ function installCanvas(drawImage = vi.fn()) {
   } as unknown as CanvasRenderingContext2D);
   return drawImage;
 }
+
+test("treats missing or legacy frame timestamps as unavailable", () => {
+  expect(parseFrameHeaders(new Headers())).toEqual({
+    frameIndex: null,
+    publishedAt: null,
+  });
+  expect(
+    parseFrameHeaders(
+      new Headers({
+        "X-Frame-Index": "7",
+        "X-Frame-Published-At": "0",
+      }),
+    ),
+  ).toEqual({ frameIndex: 7, publishedAt: null });
+});
 
 test("keeps one canvas mounted and one frame request in flight", async () => {
   installCanvas();
