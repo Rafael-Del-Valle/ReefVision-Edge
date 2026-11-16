@@ -22,7 +22,11 @@ def build_mjpeg_video(
     try:
         for index in range(frame_count):
             frame = np.zeros((height, width, 3), dtype=np.uint8)
-            frame[:, :] = (index * 20, index * 30, index * 40)
+            frame[:, :] = (
+                (index * 20) % 256,
+                (index * 30) % 256,
+                (index * 40) % 256,
+            )
             cv2.putText(
                 frame,
                 str(index),

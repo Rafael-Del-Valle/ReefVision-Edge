@@ -113,6 +113,27 @@ class ModelRegistry:
                 shutil.rmtree(target)
             raise
 
+    def get(self, model_id: str) -> RegisteredModel:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, path, model_sha256, metadata_sha256, metadata_json, provider
+                FROM models WHERE id = ?
+                """,
+                (model_id,),
+            ).fetchone()
+        if row is None:
+            raise ModelRegistrationError(f"Registered model {model_id} was not found.")
+        return RegisteredModel(
+            id=row[0],
+            metadata=ModelMetadata.model_validate_json(row[4]),
+            path=Path(row[1]),
+            model_sha256=row[2],
+            metadata_sha256=row[3],
+            provider=row[5],
+            available_providers=tuple(ort.get_available_providers()),
+        )
+
     @staticmethod
     def _durable_write(path: Path, value: bytes) -> None:
         with path.open("wb") as stream:

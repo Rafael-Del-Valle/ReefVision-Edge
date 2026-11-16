@@ -71,3 +71,25 @@ class MediaStore:
         except Exception:
             shutil.rmtree(target_dir, ignore_errors=True)
             raise
+
+    def get(self, source_id: str) -> VideoSource:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, name, path, sha256, metadata_json
+                FROM sources WHERE id = ? AND kind = 'video'
+                """,
+                (source_id,),
+            ).fetchone()
+        if row is None:
+            raise SourceError(f"Recorded source {source_id} was not found.")
+        metadata = json.loads(row[4])
+        from reefvision_edge.sources import VideoProbe
+
+        return VideoSource(
+            id=row[0],
+            name=row[1],
+            path=Path(row[2]),
+            sha256=row[3],
+            probe=VideoProbe(**metadata),
+        )
