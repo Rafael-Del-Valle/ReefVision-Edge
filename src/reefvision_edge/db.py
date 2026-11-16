@@ -37,11 +37,21 @@ CREATE TABLE IF NOT EXISTS sessions (
     status TEXT NOT NULL,
     settings_json TEXT NOT NULL,
     provider TEXT,
+    requested_compute TEXT NOT NULL DEFAULT 'auto',
+    actual_device TEXT,
+    provider_reason TEXT,
     frame_count INTEGER NOT NULL DEFAULT 0,
     detection_count INTEGER NOT NULL DEFAULT 0,
+    input_fps REAL,
     inference_fps REAL,
     average_latency_ms REAL,
+    median_latency_ms REAL,
+    p95_latency_ms REAL,
+    peak_vram_mb REAL,
     dropped_frames INTEGER NOT NULL DEFAULT 0,
+    operator_profile_json TEXT,
+    operator_profile_path TEXT,
+    monitor_video_path TEXT,
     error_message TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -56,6 +66,7 @@ CREATE TABLE IF NOT EXISTS frames (
     width INTEGER NOT NULL,
     height INTEGER NOT NULL,
     latency_ms REAL NOT NULL,
+    inference_status TEXT NOT NULL DEFAULT 'inferred',
     created_at TEXT NOT NULL,
     UNIQUE(session_id, frame_index)
 );
@@ -76,6 +87,21 @@ CREATE INDEX IF NOT EXISTS idx_frames_session ON frames(session_id, frame_index)
 CREATE INDEX IF NOT EXISTS idx_detections_frame ON detections(frame_id);
 """
 
+SESSION_MIGRATIONS = {
+    "requested_compute": "TEXT NOT NULL DEFAULT 'auto'",
+    "actual_device": "TEXT",
+    "provider_reason": "TEXT",
+    "input_fps": "REAL",
+    "median_latency_ms": "REAL",
+    "p95_latency_ms": "REAL",
+    "peak_vram_mb": "REAL",
+    "operator_profile_json": "TEXT",
+    "operator_profile_path": "TEXT",
+    "monitor_video_path": "TEXT",
+}
+
+FRAME_MIGRATIONS = {"inference_status": "TEXT NOT NULL DEFAULT 'inferred'"}
+
 
 class Database:
     def __init__(self, path: Path) -> None:
@@ -91,9 +117,11 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            self._add_missing_columns(connection, "sessions", SESSION_MIGRATIONS)
+            self._add_missing_columns(connection, "frames", FRAME_MIGRATIONS)
             connection.execute(
                 """
-                INSERT INTO metadata (key, value) VALUES ('schema_version', '1')
+                INSERT INTO metadata (key, value) VALUES ('schema_version', '2')
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """
             )
@@ -101,6 +129,19 @@ class Database:
         if not reserve.exists():
             with reserve.open("wb") as stream:
                 stream.write(b"\0" * 65536)
+
+    @staticmethod
+    def _add_missing_columns(
+        connection: sqlite3.Connection, table: str, migrations: dict[str, str]
+    ) -> None:
+        existing = {
+            str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")
+        }
+        for name, declaration in migrations.items():
+            if name not in existing:
+                connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {name} {declaration}"
+                )
 
     def release_emergency_reserve(self) -> None:
         (self.path.parent / ".reefvision-edge-emergency-reserve").unlink(

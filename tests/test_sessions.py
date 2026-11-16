@@ -11,7 +11,9 @@ from tests.fixtures.build_tiny_model import build_tiny_yolo_model
 from tests.fixtures.build_video import build_mjpeg_video
 from tests.test_model_registry import valid_metadata
 
+from reefvision_edge.compute import ComputeChoice
 from reefvision_edge.db import Database
+from reefvision_edge.domain import OverlaySettings
 from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
@@ -48,7 +50,14 @@ def test_recorded_session_persists_metrics_detections_and_preview(tmp_path: Path
     assert completed.detection_count == 6
     assert completed.provider == model.provider
     assert completed.inference_fps is not None and completed.inference_fps > 0
+    assert completed.input_fps is not None and completed.input_fps > 0
     assert completed.average_latency_ms is not None and completed.average_latency_ms >= 0
+    assert completed.median_latency_ms is not None and completed.median_latency_ms >= 0
+    assert completed.p95_latency_ms is not None
+    assert completed.p95_latency_ms >= completed.median_latency_ms
+    assert completed.compute_device is ComputeChoice.AUTO
+    assert completed.actual_device == "CPU"
+    assert completed.provider_reason is not None
     with database.connect() as connection:
         frames = connection.execute(
             """
@@ -77,6 +86,47 @@ def test_recorded_session_persists_metrics_detections_and_preview(tmp_path: Path
     assert restored.frame_index == 4
     assert restored.detection_count == 2
     assert restored.jpeg == preview.jpeg
+
+
+def test_session_settings_keep_recording_and_overlay_controls_independent(
+    tmp_path: Path,
+) -> None:
+    database, model, source, _, runner, service = prepared_services(tmp_path)
+    preview = OverlaySettings(timer=False, boxes=True, labels=False)
+    recording = OverlaySettings(timer=True, boxes=False, labels=True)
+    session = service.create(
+        model.id,
+        source.id,
+        compute_device=ComputeChoice.CPU,
+        record_data=False,
+        record_monitor=True,
+        preview_overlays=preview,
+        recording_overlays=recording,
+    )
+
+    runner.run(session.id)
+
+    completed = service.get(session.id)
+    assert completed.compute_device is ComputeChoice.CPU
+    assert completed.record_data is False
+    assert completed.record_monitor is True
+    assert completed.preview_overlays == preview
+    assert completed.recording_overlays == recording
+    assert completed.frame_count == 5
+    assert completed.detection_count == 10
+    with database.connect() as connection:
+        frame_rows = connection.execute(
+            "SELECT COUNT(*) FROM frames WHERE session_id = ?", (session.id,)
+        ).fetchone()[0]
+        detection_rows = connection.execute(
+            """
+            SELECT COUNT(*) FROM detections d
+            JOIN frames f ON f.id = d.frame_id WHERE f.session_id = ?
+            """,
+            (session.id,),
+        ).fetchone()[0]
+    assert frame_rows == 0
+    assert detection_rows == 0
 
 
 def test_running_session_can_be_canceled_with_committed_progress(tmp_path: Path) -> None:

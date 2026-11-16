@@ -44,10 +44,37 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
 
     created_response = client.post(
         "/api/sessions",
-        json={"model_id": model["id"], "source_id": source["id"], "sample_every": 2},
+        json={
+            "model_id": model["id"],
+            "source_id": source["id"],
+            "sample_every": 2,
+            "compute_device": "cpu",
+            "record_data": True,
+            "record_monitor": False,
+            "preview_overlays": {
+                "timer": False,
+                "trails": False,
+                "boxes": True,
+                "masks": False,
+                "labels": True,
+            },
+            "recording_overlays": {
+                "timer": True,
+                "trails": False,
+                "boxes": False,
+                "masks": False,
+                "labels": True,
+            },
+        },
     )
     assert created_response.status_code == 201
-    session_id = created_response.json()["id"]
+    created = created_response.json()
+    session_id = created["id"]
+    assert created["compute_device"] == "cpu"
+    assert created["record_data"] is True
+    assert created["record_monitor"] is False
+    assert created["preview_overlays"]["timer"] is False
+    assert created["recording_overlays"]["boxes"] is False
     assert client.post(f"/api/sessions/{session_id}/start").status_code == 202
 
     deadline = time.monotonic() + 5
@@ -60,6 +87,10 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
     assert session["frame_count"] == 3
     assert session["detection_count"] == 6
     assert session["provider"] == "CPUExecutionProvider"
+    assert session["actual_device"] == "CPU"
+    assert session["provider_reason"] == "CPU was selected explicitly."
+    assert session["median_latency_ms"] >= 0
+    assert session["p95_latency_ms"] >= session["median_latency_ms"]
 
     preview = client.get(f"/api/previews/{session_id}")
     assert preview.status_code == 200

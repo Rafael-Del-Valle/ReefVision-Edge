@@ -69,3 +69,12 @@ class InferenceResult:
     detections: tuple[Detection, ...]
     latency_ms: float
     provider: str
+
+
+@dataclass(frozen=True)
+class OverlaySettings:
+    timer: bool = True
+    trails: bool = False
+    boxes: bool = True
+    masks: bool = False
+    labels: bool = True

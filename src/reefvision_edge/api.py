@@ -10,8 +10,9 @@ from fastapi import APIRouter, Form, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from reefvision_edge.compute import ComputeChoice
 from reefvision_edge.config import Settings
-from reefvision_edge.domain import RegisteredModel
+from reefvision_edge.domain import OverlaySettings, RegisteredModel
 from reefvision_edge.exports import ExportError, ExportService
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
@@ -28,6 +29,12 @@ class SessionRequest(BaseModel):
     model_id: str
     source_id: str
     sample_every: int = Field(default=1, ge=1, le=10000)
+    compute_device: ComputeChoice = ComputeChoice.AUTO
+    record_data: bool = True
+    record_monitor: bool = False
+    preview_overlays: OverlaySettings = OverlaySettings()
+    recording_overlays: OverlaySettings = OverlaySettings()
+    enable_profiling: bool = False
 
 
 def error_response(status_code: int, code: str, message: str) -> JSONResponse:
@@ -143,6 +150,12 @@ def create_api_router(
                     request.model_id,
                     request.source_id,
                     sample_every=request.sample_every,
+                    compute_device=request.compute_device,
+                    record_data=request.record_data,
+                    record_monitor=request.record_monitor,
+                    preview_overlays=request.preview_overlays,
+                    recording_overlays=request.recording_overlays,
+                    enable_profiling=request.enable_profiling,
                 )
             )
         except (KeyError, ValueError, ModelRegistrationError, SourceError) as exc:

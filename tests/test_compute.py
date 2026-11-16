@@ -10,6 +10,7 @@ from reefvision_edge.compute import (
     ComputeDeviceError,
     parse_ort_profile,
     resolve_compute,
+    sample_process_vram_mb,
 )
 
 
@@ -123,3 +124,15 @@ def test_profile_parser_rejects_malformed_profile(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="JSON event list"):
         parse_ort_profile(profile)
+
+
+def test_vram_sampler_returns_memory_for_current_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Result:
+        stdout = "1234, 128\n4321, 512\n"
+
+    monkeypatch.setattr("reefvision_edge.compute.os.getpid", lambda: 4321)
+    monkeypatch.setattr("reefvision_edge.compute.subprocess.run", lambda *_a, **_k: Result())
+
+    assert sample_process_vram_mb() == 512.0

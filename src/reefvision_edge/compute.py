@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
@@ -70,6 +71,36 @@ def detect_nvidia_device() -> str:
         return "NVIDIA GPU"
     name = completed.stdout.splitlines()[0].strip() if completed.stdout.strip() else ""
     return name or "NVIDIA GPU"
+
+
+def sample_process_vram_mb() -> float | None:
+    try:
+        completed = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=pid,used_gpu_memory",
+                "--format=csv,noheader,nounits",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    current_pid = os.getpid()
+    used: list[float] = []
+    for line in completed.stdout.splitlines():
+        fields = [field.strip() for field in line.split(",", maxsplit=1)]
+        if len(fields) != 2:
+            continue
+        try:
+            if int(fields[0]) == current_pid:
+                used.append(float(fields[1]))
+        except ValueError:
+            continue
+    return max(used) if used else None
 
 
 def _cpu_resolution(
