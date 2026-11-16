@@ -310,7 +310,8 @@ class SessionRunner:
                         UPDATE sessions SET frame_count = ?, detection_count = ?,
                             input_fps = ?, inference_fps = ?, average_latency_ms = ?,
                             median_latency_ms = ?, p95_latency_ms = ?, provider = ?,
-                            peak_vram_mb = ?, dropped_frames = ?,
+                            actual_device = ?, provider_reason = ?, peak_vram_mb = ?,
+                            dropped_frames = ?,
                             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                         WHERE id = ? AND status = 'running'
                         """,
@@ -323,6 +324,8 @@ class SessionRunner:
                             median_latency_ms,
                             p95_latency_ms,
                             detector.resolution.active_provider,
+                            detector.resolution.actual_device,
+                            detector.resolution.explanation,
                             peak_vram_mb,
                             camera.dropped_frames if camera else 0,
                             session_id,

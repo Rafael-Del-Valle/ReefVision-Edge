@@ -12,7 +12,7 @@ from tests.fixtures.build_tiny_model import build_tiny_yolo_model
 from tests.fixtures.build_video import build_mjpeg_video
 from tests.test_model_registry import valid_metadata
 
-from reefvision_edge.compute import ComputeChoice
+from reefvision_edge.compute import ComputeChoice, cpu_fallback
 from reefvision_edge.db import Database
 from reefvision_edge.domain import OverlaySettings
 from reefvision_edge.inference import YoloOnnxDetector
@@ -395,3 +395,33 @@ def test_vram_sampling_is_rate_limited(tmp_path: Path, monkeypatch: pytest.Monke
 
     assert service.get(session.id).frame_count == 40
     assert samples <= 2
+
+
+def test_realized_auto_fallback_device_and_reason_are_persisted(tmp_path: Path) -> None:
+    database, model, source, previews, _, _ = prepared_services(tmp_path)
+
+    class AutoFallbackDetector(YoloOnnxDetector):
+        def predict(self, frame):  # type: ignore[no-untyped-def]
+            result = super().predict(frame)
+            self.compute = cpu_fallback(
+                ComputeChoice.AUTO, "CUDA executed zero supported operators."
+            )
+            return result
+
+    runner = SessionRunner(
+        database,
+        ModelRegistry(database, tmp_path / "models"),
+        MediaStore(database, tmp_path / "media"),
+        previews,
+        detector_factory=AutoFallbackDetector,
+    )
+    service = SessionService(database, runner)
+    session = service.create(model.id, source.id, compute_device=ComputeChoice.AUTO)
+
+    runner.run(session.id)
+
+    completed = service.get(session.id)
+    assert completed.provider == "CPUExecutionProvider"
+    assert completed.actual_device == "CPU"
+    assert completed.provider_reason is not None
+    assert "using CPU" in completed.provider_reason
