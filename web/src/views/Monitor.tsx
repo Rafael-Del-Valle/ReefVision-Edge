@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Metric } from "../components/Metric";
 import { StatusBadge } from "../components/StatusBadge";
@@ -123,6 +123,13 @@ export function Monitor({
   const selectedModel = modelId || models[0]?.id || "";
   const selectedSource = sourceId || sources[0]?.id || "";
   const selectedCamera = cameraDevice || captureDevices[0]?.id || "";
+  useEffect(() => {
+    if (
+      cameraDevice &&
+      !captureDevices.some((device) => device.id === cameraDevice)
+    )
+      setCameraDevice("");
+  }, [cameraDevice, captureDevices]);
   const active = useMemo(
     () =>
       sessions.find((item) => item.id === activeSessionId) ??

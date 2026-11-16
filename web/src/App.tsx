@@ -36,11 +36,8 @@ function captureIsOwned(
   sources: SourceRecord[],
   monitorStatus: MonitorStatus,
 ): boolean {
-  if (
-    ["connecting", "receiving", "stalled", "disconnected"].includes(
-      monitorStatus.state,
-    )
-  )
+  if (monitorStatus.state === "disconnected") return false;
+  if (["connecting", "receiving", "stalled"].includes(monitorStatus.state))
     return true;
   const cameraIds = new Set(
     sources

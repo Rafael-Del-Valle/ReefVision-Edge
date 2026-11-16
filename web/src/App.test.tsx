@@ -85,6 +85,7 @@ function jsonResponse(value: unknown): Promise<Response> {
 }
 
 function installFetch({
+  sources = [source],
   sessions = [session],
   monitorStatus = {
     state: "replaying",
@@ -94,6 +95,7 @@ function installFetch({
     updated_at: 1234.5,
   },
 }: {
+  sources?: (typeof source)[];
   sessions?: (typeof session)[];
   monitorStatus?: {
     state: string;
@@ -108,7 +110,7 @@ function installFetch({
     vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/models")) return jsonResponse([model]);
-      if (url.endsWith("/api/sources")) return jsonResponse([source]);
+      if (url.endsWith("/api/sources")) return jsonResponse(sources);
       if (url.endsWith("/api/sessions")) return jsonResponse(sessions);
       if (url.endsWith("/api/capture-devices"))
         return jsonResponse([
@@ -200,6 +202,47 @@ test("does not discover cameras while a camera session owns capture", async () =
   expect(
     screen.getByRole("button", { name: "Refresh cameras" }),
   ).toBeDisabled();
+});
+
+test("allows rediscovery after a disconnected camera releases capture", async () => {
+  installFetch({
+    sources: [
+      source,
+      {
+        ...source,
+        id: "camera-source-1",
+        kind: "camera",
+        name: "Camera 1",
+      },
+    ],
+    sessions: [
+      {
+        ...session,
+        status: "running",
+        source_id: "camera-source-1",
+      },
+    ],
+    monitorStatus: {
+      state: "disconnected",
+      source_id: "camera-source-1",
+      frame_index: 4,
+      detail: "Camera disconnected.",
+      updated_at: 1234.5,
+    },
+  });
+  const fetchMock = vi.mocked(fetch);
+
+  render(<App />);
+
+  expect(
+    await screen.findByRole("heading", { name: "Field monitor" }),
+  ).toBeVisible();
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).endsWith("/api/capture-devices"),
+    ),
+  ).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Refresh cameras" })).toBeEnabled();
 });
 
 test("starting inference does not rediscover cameras", async () => {
