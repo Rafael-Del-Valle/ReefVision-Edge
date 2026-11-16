@@ -87,7 +87,7 @@ try {
     & $buildPython -m pip install --disable-pip-version-check --no-index `
         --find-links (Join-Path $bundleRoot "wheels") "pyinstaller==6.16.0"
     if ($LASTEXITCODE -ne 0) { throw "Could not install pinned PyInstaller." }
-    & $buildPython -m pip install --disable-pip-version-check --no-index `
+    & $buildPython -m pip install --disable-pip-version-check --no-index --force-reinstall `
         --find-links (Join-Path $bundleRoot "app") `
         --find-links (Join-Path $bundleRoot "wheels") `
         "reefvision-edge==0.1.0"

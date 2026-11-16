@@ -151,6 +151,13 @@ def test_msi_build_requires_a_pinned_webview2_input() -> None:
     assert ".codex\\worktrees" not in script
 
 
+def test_msi_build_reinstalls_the_application_wheel_from_the_selected_bundle() -> None:
+    script = (ROOT / "scripts" / "build_windows_msi.ps1").read_text(encoding="utf-8")
+
+    assert "--force-reinstall" in script
+    assert '"reefvision-edge==0.1.0"' in script
+
+
 def test_installed_acceptance_requires_new_uploads_and_uninstall_isolation() -> None:
     acceptance = (ROOT / "scripts" / "acceptance_windows_installed.ps1").read_text(
         encoding="utf-8"
