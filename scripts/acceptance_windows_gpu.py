@@ -217,6 +217,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--bundle-path", type=Path, required=True)
     parser.add_argument("--duration-seconds", type=float, default=60.0)
+    parser.add_argument("--fallback-check", action="store_true")
     arguments = parser.parse_args()
     output = arguments.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -224,6 +225,52 @@ def main() -> None:
     short_video = build_mjpeg_video(
         output / "parity.avi", frame_count=12, width=160, height=90, fps=10
     )
+    if arguments.fallback_check:
+        with httpx.Client(base_url=arguments.base_url, timeout=120) as client:
+            model = _upload_model(client, model_path)
+            source = _upload_video(client, short_video)
+            explicit = _request(
+                client,
+                "POST",
+                "/api/sessions",
+                json={
+                    "model_id": model["id"],
+                    "source_id": source["id"],
+                    "compute_device": "nvidia",
+                },
+            )
+            _request(client, "POST", f"/api/sessions/{explicit['id']}/start")
+            explicit = _wait_terminal(client, explicit["id"])
+            if explicit["status"] != "failed" or "NVIDIA GPU mode" not in (
+                explicit.get("error_message") or ""
+            ):
+                raise AssertionError(
+                    "Explicit NVIDIA did not fail actionably with CUDA hidden: "
+                    f"{explicit}"
+                )
+            automatic, _ = _run_session(
+                client,
+                model["id"],
+                source["id"],
+                compute="auto",
+                record_data=True,
+                record_monitor=False,
+            )
+            if automatic["provider"] != "CPUExecutionProvider":
+                raise AssertionError(f"Auto did not fall back to CPU: {automatic}")
+            if "using CPU" not in (automatic.get("provider_reason") or ""):
+                raise AssertionError("Auto fallback did not persist a visible reason.")
+        result = {
+            "explicit_nvidia_status": explicit["status"],
+            "explicit_nvidia_error": explicit["error_message"],
+            "auto_provider": automatic["provider"],
+            "auto_reason": automatic["provider_reason"],
+        }
+        (output / "fallback-result.json").write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
     sustained_video = build_mjpeg_video(
         output / "sustained.avi", frame_count=20_000, width=160, height=90, fps=10
     )

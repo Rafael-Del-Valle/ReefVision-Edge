@@ -89,3 +89,57 @@ finally {
         $process.WaitForExit(10000)
     }
 }
+
+# Prove packaged negative behavior with CUDA hidden from a second isolated backend.
+$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+$listener.Start()
+$fallbackPort = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+$listener.Stop()
+$fallbackData = Join-Path $output "fallback-data"
+$fallbackLog = Join-Path $output "fallback-backend.log"
+$fallbackError = Join-Path $output "fallback-backend-error.log"
+$previousCudaVisible = $env:CUDA_VISIBLE_DEVICES
+$fallbackProcess = $null
+try {
+    $env:CUDA_VISIBLE_DEVICES = "-1"
+    $fallbackProcess = Start-Process -FilePath $backend -ArgumentList @(
+        "--host", "127.0.0.1",
+        "--port", "$fallbackPort",
+        "--data-dir", $fallbackData
+    ) -WindowStyle Hidden -RedirectStandardOutput $fallbackLog `
+        -RedirectStandardError $fallbackError -PassThru
+}
+finally {
+    if ($null -eq $previousCudaVisible) {
+        Remove-Item Env:CUDA_VISIBLE_DEVICES -ErrorAction SilentlyContinue
+    } else {
+        $env:CUDA_VISIBLE_DEVICES = $previousCudaVisible
+    }
+}
+try {
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        if ($fallbackProcess.HasExited) {
+            throw "CUDA-hidden backend exited early with code $($fallbackProcess.ExitCode)."
+        }
+        try {
+            $health = Invoke-RestMethod -Uri "http://127.0.0.1:$fallbackPort/api/health" -TimeoutSec 1
+        } catch {
+            $health = $null
+            Start-Sleep -Milliseconds 100
+        }
+    } while ($null -eq $health -and [DateTime]::UtcNow -lt $deadline)
+    if ($null -eq $health) { throw "CUDA-hidden backend did not become healthy." }
+    & $python (Join-Path $PSScriptRoot "acceptance_windows_gpu.py") `
+        --base-url "http://127.0.0.1:$fallbackPort" `
+        --output-dir (Join-Path $output "fallback") `
+        --bundle-path $bundle `
+        --fallback-check
+    if ($LASTEXITCODE -ne 0) { throw "Packaged CUDA fallback check failed." }
+}
+finally {
+    if ($null -ne $fallbackProcess -and -not $fallbackProcess.HasExited) {
+        Stop-Process -Id $fallbackProcess.Id -Force
+        $fallbackProcess.WaitForExit(10000)
+    }
+}

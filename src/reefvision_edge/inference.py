@@ -143,6 +143,10 @@ class YoloOnnxDetector:
         self.compute = cpu_fallback(self.compute.requested, reason)
         options = ort.SessionOptions()
         options.enable_profiling = self._requested_profiling
+        if hasattr(ort.InferenceSession, "get_provider_graph_assignment_info"):
+            options.add_session_config_entry(
+                "session.record_ep_graph_assignment_info", "1"
+            )
         self.session = ort.InferenceSession(
             str(self.model.path),
             sess_options=options,
