@@ -44,6 +44,18 @@ CSV_FIELDS = (
     "y_max",
 )
 
+FRAME_CSV_FIELDS = (
+    "schema",
+    "session_id",
+    "frame_index",
+    "timestamp_ms",
+    "source_width",
+    "source_height",
+    "latency_ms",
+    "inference_status",
+    "detection_count",
+)
+
 
 class ExportService:
     def __init__(self, database: Database, output_dir: Path) -> None:
@@ -51,7 +63,7 @@ class ExportService:
         self.output_dir = output_dir
 
     def build_zip(self, session_id: str) -> Path:
-        manifest, csv_bytes = self._serialize(session_id)
+        manifest, frames_csv, detections_csv, attachments = self._serialize(session_id)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         target = self.output_dir / f"{session_id}.zip"
         temporary = self.output_dir / f".{session_id}.tmp"
@@ -59,17 +71,25 @@ class ExportService:
             temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
         ) as bundle:
             bundle.writestr("manifest.json", manifest)
-            bundle.writestr("detections.csv", csv_bytes)
+            bundle.writestr("frames.csv", frames_csv)
+            bundle.writestr("detections.csv", detections_csv)
+            for name, path in attachments:
+                bundle.write(path, name)
         os.replace(temporary, target)
         return target
 
-    def _serialize(self, session_id: str) -> tuple[bytes, bytes]:
+    def _serialize(
+        self, session_id: str
+    ) -> tuple[bytes, bytes, bytes, list[tuple[str, Path]]]:
         with self.database.connect() as connection:
             session = connection.execute(
                 """
                 SELECT id, model_id, source_id, status, settings_json, provider,
-                    frame_count, detection_count, inference_fps, average_latency_ms,
-                    dropped_frames, error_message, created_at, updated_at, completed_at
+                    requested_compute, actual_device, provider_reason, frame_count,
+                    detection_count, input_fps, inference_fps, average_latency_ms,
+                    median_latency_ms, p95_latency_ms, peak_vram_mb, dropped_frames,
+                    operator_profile_json, operator_profile_path, monitor_video_path,
+                    error_message, created_at, updated_at, completed_at
                 FROM sessions WHERE id = ?
                 """,
                 (session_id,),
@@ -95,7 +115,7 @@ class ExportService:
             frame_rows = connection.execute(
                 """
                 SELECT f.frame_index, f.timestamp_ms, f.width, f.height,
-                    f.latency_ms, COUNT(d.id)
+                    f.latency_ms, f.inference_status, COUNT(d.id)
                 FROM frames f LEFT JOIN detections d ON d.frame_id = f.id
                 WHERE f.session_id = ?
                 GROUP BY f.id
@@ -126,19 +146,40 @@ class ExportService:
             source_height = source_height or frame_rows[0][3]
         manifest_value = {
             "schema": "reefvision-edge-session/v1",
-            "exported_at": session[14] or session[13],
+            "exported_at": session[24] or session[23],
             "session": {
                 "id": session[0],
                 "status": session[3],
-                "created_at": session[12],
-                "updated_at": session[13],
-                "completed_at": session[14],
-                "frame_count": session[6],
-                "detection_count": session[7],
-                "inference_fps": session[8],
-                "average_latency_ms": session[9],
-                "dropped_frames": session[10],
-                "error_message": session[11],
+                "created_at": session[22],
+                "updated_at": session[23],
+                "completed_at": session[24],
+                "frame_count": session[9],
+                "detection_count": session[10],
+                "input_fps": session[11],
+                "inference_fps": session[12],
+                "average_latency_ms": session[13],
+                "median_latency_ms": session[14],
+                "p95_latency_ms": session[15],
+                "peak_vram_mb": session[16],
+                "dropped_frames": session[17],
+                "error_message": session[21],
+            },
+            "compute": {
+                "requested": session[6],
+                "actual_device": session[7],
+                "active_provider": session[5] or model[5],
+                "explanation": session[8],
+                "operator_profile": json.loads(session[18]) if session[18] else None,
+                "profile_artifact": (
+                    "operator-profile.json" if session[19] else None
+                ),
+            },
+            "recording": {
+                "record_data": bool(settings.get("record_data", True)),
+                "record_monitor": bool(settings.get("record_monitor", False)),
+                "preview_overlays": settings.get("preview_overlays", {}),
+                "recording_overlays": settings.get("recording_overlays", {}),
+                "monitor_video_artifact": "monitor.mp4" if session[20] else None,
             },
             "model": {
                 "id": model[0],
@@ -173,7 +214,8 @@ class ExportService:
                     "width": row[2],
                     "height": row[3],
                     "latency_ms": row[4],
-                    "detection_count": row[5],
+                    "inference_status": row[5],
+                    "detection_count": row[6],
                 }
                 for row in frame_rows
             ],
@@ -193,6 +235,25 @@ class ExportService:
         manifest_bytes = (
             json.dumps(manifest_value, indent=2, sort_keys=True) + "\n"
         ).encode("utf-8")
+        frame_output = io.StringIO(newline="")
+        frame_writer = csv.DictWriter(
+            frame_output, fieldnames=FRAME_CSV_FIELDS, lineterminator="\n"
+        )
+        frame_writer.writeheader()
+        for row in frame_rows:
+            frame_writer.writerow(
+                {
+                    "schema": "reefvision-edge-frame/v1",
+                    "session_id": session[0],
+                    "frame_index": row[0],
+                    "timestamp_ms": "" if row[1] is None else f"{row[1]:.3f}",
+                    "source_width": row[2],
+                    "source_height": row[3],
+                    "latency_ms": f"{row[4]:.6f}",
+                    "inference_status": row[5],
+                    "detection_count": row[6],
+                }
+            )
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=CSV_FIELDS, lineterminator="\n")
         writer.writeheader()
@@ -216,7 +277,17 @@ class ExportService:
                     "y_max": f"{row[10]:.3f}",
                 }
             )
-        return manifest_bytes, output.getvalue().encode("utf-8")
+        attachments: list[tuple[str, Path]] = []
+        if session[20] and Path(session[20]).is_file():
+            attachments.append(("monitor.mp4", Path(session[20])))
+        if session[19] and Path(session[19]).is_file():
+            attachments.append(("operator-profile.json", Path(session[19])))
+        return (
+            manifest_bytes,
+            frame_output.getvalue().encode("utf-8"),
+            output.getvalue().encode("utf-8"),
+            attachments,
+        )
 
 
 def _read_export(path: Path) -> tuple[bytes, bytes]:
@@ -323,9 +394,19 @@ def validate_export(path: Path) -> ExportSummary:
             raise ExportError("Detection dimensions do not match the frame record.")
         if not (0 <= x_min < x_max <= width and 0 <= y_min < y_max <= height):
             raise ExportError("Detection coordinates are outside source dimensions.")
-    if len(rows) != _integer(session.get("detection_count", -1), "detection_count"):
+    recording = manifest.get("recording", {})
+    record_data = not isinstance(recording, dict) or bool(recording.get("record_data", True))
+    expected_detections = (
+        _integer(session.get("detection_count", -1), "detection_count")
+        if record_data
+        else 0
+    )
+    if len(rows) != expected_detections:
         raise ExportError("Detection count does not match the manifest.")
-    if len(frame_map) != _integer(session.get("frame_count", -1), "frame_count"):
+    expected_frames = (
+        _integer(session.get("frame_count", -1), "frame_count") if record_data else 0
+    )
+    if len(frame_map) != expected_frames:
         raise ExportError("Frame count does not match the manifest.")
     for frame_index, frame in frame_map.items():
         if _integer(

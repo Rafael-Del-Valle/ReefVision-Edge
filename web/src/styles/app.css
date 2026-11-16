@@ -346,6 +346,68 @@ form label > span {
   color: var(--rv-muted);
   line-height: 1.4;
 }
+.provider-reason {
+  margin: -4px 0 16px;
+  padding: 10px 11px;
+  border: 1px solid var(--rv-border);
+  border-radius: 8px;
+  color: var(--rv-muted-strong);
+  background: rgba(4, 21, 25, 0.55);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.preview-button {
+  width: 100%;
+  margin: -3px 0 14px;
+}
+.recording-toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--rv-muted-strong);
+  font-size: 11px;
+  font-weight: 700;
+}
+.check-row input {
+  width: auto;
+  accent-color: var(--rv-accent-strong);
+}
+.check-row input:disabled + span {
+  color: var(--rv-muted);
+  text-decoration: line-through;
+}
+.overlay-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.overlay-controls {
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--rv-border);
+  border-radius: 9px;
+}
+.overlay-controls legend {
+  padding: 0 4px;
+  color: var(--rv-muted-strong);
+  font-size: 10px;
+  font-weight: 800;
+}
+.overlay-controls .check-row + .check-row {
+  margin-top: 7px;
+}
+.overlay-notes {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
 input,
 select {
   min-width: 0;
@@ -760,6 +822,9 @@ footer {
   }
   .metrics-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .overlay-grid {
+    grid-template-columns: 1fr;
   }
   .metric:nth-child(2) {
     border-right: 0;

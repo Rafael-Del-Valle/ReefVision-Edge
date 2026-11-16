@@ -1,8 +1,11 @@
 import type {
   Capabilities,
+  CaptureDevice,
+  MonitorStatus,
   ModelRecord,
   PublicSettings,
   SessionRecord,
+  SessionCreateOptions,
   SourceRecord,
 } from "./types";
 
@@ -32,6 +35,14 @@ export const api = {
   sessions: () => request<SessionRecord[]>("/api/sessions"),
   capabilities: () => request<Capabilities>("/api/capabilities"),
   settings: () => request<PublicSettings>("/api/settings"),
+  captureDevices: () => request<CaptureDevice[]>("/api/capture-devices"),
+  monitorStatus: () => request<MonitorStatus>("/api/monitor/status"),
+  selectMonitor: (sourceId: string) =>
+    request<MonitorStatus>("/api/monitor/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_id: sourceId }),
+    }),
   session: (id: string) => request<SessionRecord>(`/api/sessions/${id}`),
   registerModel: async (model: File, metadata: File): Promise<ModelRecord> => {
     const body = new FormData();
@@ -53,14 +64,20 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ device }),
     }),
-  createSession: (modelId: string, sourceId: string, sampleEvery: number) =>
+  createSession: (options: SessionCreateOptions) =>
     request<SessionRecord>("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model_id: modelId,
-        source_id: sourceId,
-        sample_every: sampleEvery,
+        model_id: options.modelId,
+        source_id: options.sourceId,
+        sample_every: options.sampleEvery,
+        compute_device: options.computeDevice,
+        record_data: options.recordData,
+        record_monitor: options.recordMonitor,
+        preview_overlays: options.previewOverlays,
+        recording_overlays: options.recordingOverlays,
+        enable_profiling: options.enableProfiling,
       }),
     }),
   startSession: (id: string) =>

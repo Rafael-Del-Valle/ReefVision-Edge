@@ -3,9 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import type {
   Capabilities,
+  CaptureDevice,
   ModelRecord,
+  MonitorStatus,
   PublicSettings,
   SessionRecord,
+  SessionCreateOptions,
   SourceRecord,
 } from "./types";
 import { Monitor } from "./views/Monitor";
@@ -20,6 +23,8 @@ interface StationData {
   sessions: SessionRecord[];
   capabilities: Capabilities;
   settings: PublicSettings;
+  captureDevices: CaptureDevice[];
+  monitorStatus: MonitorStatus;
 }
 
 export function App() {
@@ -30,15 +35,32 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [models, sources, sessions, capabilities, settings] =
-      await Promise.all([
-        api.models(),
-        api.sources(),
-        api.sessions(),
-        api.capabilities(),
-        api.settings(),
-      ]);
-    setData({ models, sources, sessions, capabilities, settings });
+    const [
+      models,
+      sources,
+      sessions,
+      capabilities,
+      settings,
+      captureDevices,
+      monitorStatus,
+    ] = await Promise.all([
+      api.models(),
+      api.sources(),
+      api.sessions(),
+      api.capabilities(),
+      api.settings(),
+      api.captureDevices(),
+      api.monitorStatus(),
+    ]);
+    setData({
+      models,
+      sources,
+      sessions,
+      capabilities,
+      settings,
+      captureDevices,
+      monitorStatus,
+    });
     setActiveSessionId((current) => current ?? sessions[0]?.id ?? null);
     setError(null);
   }, []);
@@ -58,6 +80,9 @@ export function App() {
     if (
       !data?.sessions.some((session) =>
         ["queued", "running"].includes(session.status),
+      ) &&
+      !["connecting", "receiving", "replaying"].includes(
+        data?.monitorStatus.state ?? "idle",
       )
     )
       return;
@@ -139,14 +164,13 @@ export function App() {
             models={data.models}
             sources={data.sources}
             sessions={data.sessions}
+            captureDevices={data.captureDevices}
+            monitorStatus={data.monitorStatus}
+            overlayCapabilities={data.capabilities.overlay_capabilities}
             activeSessionId={activeSessionId}
             onActiveSession={setActiveSessionId}
-            onStart={async (modelId, sourceId, sampleEvery) => {
-              const created = await api.createSession(
-                modelId,
-                sourceId,
-                sampleEvery,
-              );
+            onStart={async (options: SessionCreateOptions) => {
+              const created = await api.createSession(options);
               setActiveSessionId(created.id);
               await api.startSession(created.id);
               await refresh();
@@ -165,6 +189,10 @@ export function App() {
             }}
             onCamera={async (device) => {
               await api.registerCamera(device);
+              await refresh();
+            }}
+            onPreview={async (sourceId) => {
+              await api.selectMonitor(sourceId);
               await refresh();
             }}
           />

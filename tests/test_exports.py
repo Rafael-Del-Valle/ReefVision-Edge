@@ -28,8 +28,13 @@ def test_export_contains_versioned_provenance_and_original_coordinate_csv(
     archive = exporter.build_zip(session.id)
 
     with zipfile.ZipFile(archive) as bundle:
-        assert bundle.namelist() == ["manifest.json", "detections.csv"]
+        assert bundle.namelist() == [
+            "manifest.json",
+            "frames.csv",
+            "detections.csv",
+        ]
         manifest = json.loads(bundle.read("manifest.json"))
+        frame_rows = list(csv.DictReader(io.StringIO(bundle.read("frames.csv").decode())))
         rows = list(csv.DictReader(io.StringIO(bundle.read("detections.csv").decode())))
     assert manifest["schema"] == "reefvision-edge-session/v1"
     assert manifest["session"]["id"] == session.id
@@ -43,9 +48,18 @@ def test_export_contains_versioned_provenance_and_original_coordinate_csv(
     assert manifest["source"]["sha256"] == source.sha256
     assert manifest["source"]["dimensions"] == {"width": 160, "height": 90}
     assert manifest["thresholds"] == {"confidence": 0.5, "iou": 0.45}
+    assert manifest["compute"]["requested"] == "auto"
+    assert manifest["compute"]["actual_device"] == "CPU"
+    assert manifest["recording"]["record_data"] is True
+    assert manifest["recording"]["record_monitor"] is False
     assert [frame["frame_index"] for frame in manifest["frames"]] == [0, 2, 4]
     assert [frame["detection_count"] for frame in manifest["frames"]] == [2, 2, 2]
     assert len(rows) == 6
+    assert [row["inference_status"] for row in frame_rows] == [
+        "inferred",
+        "inferred",
+        "inferred",
+    ]
     assert rows[0]["schema"] == "reefvision-edge-detection/v1"
     assert rows[0]["frame_index"] == "0"
     assert rows[0]["timestamp_ms"] == "0.000"
@@ -64,14 +78,50 @@ def test_export_is_deterministic_for_same_persisted_session(tmp_path: Path) -> N
     first = exporter.build_zip(session.id)
     with zipfile.ZipFile(first) as bundle:
         first_manifest = bundle.read("manifest.json")
+        first_frames = bundle.read("frames.csv")
         first_csv = bundle.read("detections.csv")
     second = exporter.build_zip(session.id)
     with zipfile.ZipFile(second) as bundle:
         second_manifest = bundle.read("manifest.json")
+        second_frames = bundle.read("frames.csv")
         second_csv = bundle.read("detections.csv")
 
     assert second_manifest == first_manifest
+    assert second_frames == first_frames
     assert second_csv == first_csv
+
+
+def test_export_includes_monitor_video_and_independent_overlay_settings(
+    tmp_path: Path,
+) -> None:
+    database, model, source, _, runner, service = prepared_services(tmp_path)
+    from reefvision_edge.domain import OverlaySettings
+
+    session = service.create(
+        model.id,
+        source.id,
+        record_monitor=True,
+        preview_overlays=OverlaySettings(timer=False, boxes=True, labels=False),
+        recording_overlays=OverlaySettings(timer=True, boxes=False, labels=True),
+    )
+    runner.run(session.id)
+    archive = ExportService(database, tmp_path / "exports").build_zip(session.id)
+
+    with zipfile.ZipFile(archive) as bundle:
+        manifest = json.loads(bundle.read("manifest.json"))
+        video = bundle.read("monitor.mp4")
+        names = bundle.namelist()
+    assert names == ["manifest.json", "frames.csv", "detections.csv", "monitor.mp4"]
+    assert len(video) > 0
+    assert manifest["recording"]["preview_overlays"] == {
+        "timer": False,
+        "trails": False,
+        "boxes": True,
+        "masks": False,
+        "labels": False,
+    }
+    assert manifest["recording"]["recording_overlays"]["timer"] is True
+    assert manifest["recording"]["recording_overlays"]["boxes"] is False
 
 
 def test_round_trip_validator_checks_counts_coordinates_and_hashes(tmp_path: Path) -> None:

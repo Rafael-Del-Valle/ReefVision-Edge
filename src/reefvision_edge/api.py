@@ -17,6 +17,7 @@ from reefvision_edge.exports import ExportError, ExportService
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
 from reefvision_edge.monitor import MonitorPreviewService
+from reefvision_edge.monitor_video import overlay_capabilities
 from reefvision_edge.preview import PreviewStore
 from reefvision_edge.sessions import SessionService
 from reefvision_edge.sources import SourceError
@@ -102,6 +103,7 @@ def create_api_router(
                 else "unavailable"
             ),
             "offline_runtime": True,
+            "overlay_capabilities": overlay_capabilities(),
         }
 
     @router.get("/settings")

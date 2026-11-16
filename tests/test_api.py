@@ -115,7 +115,11 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
     assert export.status_code == 200
     assert export.headers["content-type"] == "application/zip"
     with zipfile.ZipFile(BytesIO(export.content)) as bundle:
-        assert bundle.namelist() == ["manifest.json", "detections.csv"]
+        assert bundle.namelist() == [
+            "manifest.json",
+            "frames.csv",
+            "detections.csv",
+        ]
 
     sessions = client.get("/api/sessions").json()
     assert [item["id"] for item in sessions] == [session_id]

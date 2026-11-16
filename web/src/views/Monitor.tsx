@@ -1,34 +1,103 @@
 import { FormEvent, useMemo, useState } from "react";
 
-import type { ModelRecord, SessionRecord, SourceRecord } from "../types";
 import { Metric } from "../components/Metric";
 import { StatusBadge } from "../components/StatusBadge";
+import type {
+  CaptureDevice,
+  ComputeDevice,
+  ModelRecord,
+  MonitorStatus,
+  OverlayCapability,
+  OverlayName,
+  OverlaySettings,
+  SessionCreateOptions,
+  SessionRecord,
+  SourceRecord,
+} from "../types";
+
+const defaultOverlays: OverlaySettings = {
+  timer: true,
+  trails: false,
+  boxes: true,
+  masks: false,
+  labels: true,
+};
 
 interface MonitorProps {
   models: ModelRecord[];
   sources: SourceRecord[];
   sessions: SessionRecord[];
+  captureDevices: CaptureDevice[];
+  monitorStatus: MonitorStatus;
+  overlayCapabilities: Record<OverlayName, OverlayCapability>;
   activeSessionId: string | null;
   onActiveSession: (id: string | null) => void;
-  onStart: (
-    modelId: string,
-    sourceId: string,
-    sampleEvery: number,
-  ) => Promise<void>;
+  onStart: (options: SessionCreateOptions) => Promise<void>;
   onStop: (sessionId: string) => Promise<void>;
+  onPreview: (sourceId: string) => Promise<void>;
   onModelUpload: (model: File, metadata: File) => Promise<void>;
   onVideoUpload: (video: File) => Promise<void>;
   onCamera: (device: string) => Promise<void>;
+}
+
+interface OverlayControlsProps {
+  title: string;
+  prefix: "Preview" | "Recording";
+  value: OverlaySettings;
+  capabilities: Record<OverlayName, OverlayCapability>;
+  onChange: (value: OverlaySettings) => void;
+}
+
+function OverlayControls({
+  title,
+  prefix,
+  value,
+  capabilities,
+  onChange,
+}: OverlayControlsProps) {
+  return (
+    <fieldset className="overlay-controls">
+      <legend>{title}</legend>
+      {(Object.keys(value) as OverlayName[]).map((name) => (
+        <label key={name} className="check-row">
+          <input
+            aria-label={`${prefix} ${name}`}
+            type="checkbox"
+            checked={value[name]}
+            disabled={!capabilities[name].supported}
+            onChange={(event) =>
+              onChange({ ...value, [name]: event.target.checked })
+            }
+          />
+          <span>{name[0].toUpperCase() + name.slice(1)}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+function monitorLabel(status: MonitorStatus): string {
+  if (status.state === "replaying") return "Replay preview";
+  if (status.state === "receiving") return "Live camera preview";
+  if (status.state === "connecting") return "Connecting source";
+  if (status.state === "disconnected") return "Camera disconnected";
+  if (status.state === "error") return "Preview error";
+  if (status.state === "stalled") return "Preview stalled";
+  return "Idle";
 }
 
 export function Monitor({
   models,
   sources,
   sessions,
+  captureDevices,
+  monitorStatus,
+  overlayCapabilities,
   activeSessionId,
   onActiveSession,
   onStart,
   onStop,
+  onPreview,
   onModelUpload,
   onVideoUpload,
   onCamera,
@@ -36,12 +105,20 @@ export function Monitor({
   const [modelId, setModelId] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [sampleEvery, setSampleEvery] = useState(1);
+  const [computeDevice, setComputeDevice] = useState<ComputeDevice>("auto");
+  const [recordData, setRecordData] = useState(true);
+  const [recordMonitor, setRecordMonitor] = useState(false);
+  const [previewOverlays, setPreviewOverlays] =
+    useState<OverlaySettings>(defaultOverlays);
+  const [recordingOverlays, setRecordingOverlays] =
+    useState<OverlaySettings>(defaultOverlays);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [cameraDevice, setCameraDevice] = useState("/dev/video0");
+  const [cameraDevice, setCameraDevice] = useState("");
 
   const selectedModel = modelId || models[0]?.id || "";
   const selectedSource = sourceId || sources[0]?.id || "";
+  const selectedCamera = cameraDevice || captureDevices[0]?.id || "";
   const active = useMemo(
     () =>
       sessions.find((item) => item.id === activeSessionId) ??
@@ -53,6 +130,7 @@ export function Monitor({
     active?.provider ??
     models.find((item) => item.id === selectedModel)?.provider;
   const running = active?.status === "running" || active?.status === "queued";
+  const sourcePreview = monitorStatus.frame_index >= 0;
 
   async function act(name: string, action: () => Promise<void>) {
     setBusy(name);
@@ -98,23 +176,43 @@ export function Monitor({
     event.currentTarget.reset();
   }
 
+  const runOptions: SessionCreateOptions = {
+    modelId: selectedModel,
+    sourceId: selectedSource,
+    sampleEvery,
+    computeDevice,
+    recordData,
+    recordMonitor,
+    previewOverlays,
+    recordingOverlays,
+    enableProfiling: computeDevice !== "cpu",
+  };
+
   return (
     <section className="view" aria-labelledby="monitor-title">
       <div className="view-heading">
         <div>
           <p className="eyebrow">Jarvis · offline field station</p>
           <h2 id="monitor-title">Field monitor</h2>
-          <p>Run local detections and keep the latest frame responsive.</p>
+          <p>
+            Preview Windows sources, run local inference, and record each
+            artifact independently.
+          </p>
         </div>
         <div className="connection-state">
           <span className="connection-light" aria-hidden="true" />
-          Local service ready
+          {monitorLabel(monitorStatus)}
         </div>
       </div>
 
       {actionError ? (
         <div className="inline-alert" role="alert">
           {actionError}
+        </div>
+      ) : null}
+      {monitorStatus.detail ? (
+        <div className="inline-alert" role="status">
+          {monitorStatus.detail}
         </div>
       ) : null}
 
@@ -124,19 +222,28 @@ export function Monitor({
             <div>
               <span className="panel-kicker">Live preview</span>
               <h3>
-                {active
-                  ? `Session ${active.id.slice(0, 8)}`
-                  : "Waiting for a run"}
+                {sourcePreview
+                  ? monitorLabel(monitorStatus)
+                  : active
+                    ? `Session ${active.id.slice(0, 8)}`
+                    : "Waiting for a source"}
               </h3>
             </div>
-            {active ? (
+            {sourcePreview ? (
+              <span className="quiet-chip">{monitorLabel(monitorStatus)}</span>
+            ) : active ? (
               <StatusBadge status={active.status} />
             ) : (
               <span className="quiet-chip">Idle</span>
             )}
           </div>
           <div className="preview-stage">
-            {active && active.frame_count > 0 ? (
+            {sourcePreview ? (
+              <img
+                src={`/api/monitor/frame?v=${encodeURIComponent(monitorStatus.updated_at)}`}
+                alt="Live source preview"
+              />
+            ) : active && active.frame_count > 0 ? (
               <img
                 key={`${active.id}-${active.updated_at}`}
                 src={`/api/previews/${active.id}?v=${encodeURIComponent(active.updated_at)}`}
@@ -146,11 +253,17 @@ export function Monitor({
               <div className="preview-empty">
                 <div className="reticle" aria-hidden="true" />
                 <strong>No frame yet</strong>
-                <span>Select a model and source, then start inference.</span>
+                <span>Select a source and choose Preview source.</span>
               </div>
             )}
           </div>
           <div className="metrics-grid" aria-label="Session metrics">
+            <Metric
+              label="Input"
+              value={
+                active?.input_fps ? `${active.input_fps.toFixed(1)} FPS` : "—"
+              }
+            />
             <Metric
               label="Inference"
               value={
@@ -160,10 +273,18 @@ export function Monitor({
               }
             />
             <Metric
-              label="Latency"
+              label="Median"
               value={
-                active?.average_latency_ms != null
-                  ? `${active.average_latency_ms.toFixed(1)} ms`
+                active?.median_latency_ms != null
+                  ? `${active.median_latency_ms.toFixed(1)} ms`
+                  : "—"
+              }
+            />
+            <Metric
+              label="p95"
+              value={
+                active?.p95_latency_ms != null
+                  ? `${active.p95_latency_ms.toFixed(1)} ms`
                   : "—"
               }
             />
@@ -176,6 +297,15 @@ export function Monitor({
               label="Detections"
               value={String(active?.detection_count ?? 0)}
             />
+            <Metric
+              label="Peak VRAM"
+              value={
+                active?.peak_vram_mb != null
+                  ? `${active.peak_vram_mb.toFixed(0)} MB`
+                  : "—"
+              }
+            />
+            <Metric label="Device" value={active?.actual_device ?? "—"} />
           </div>
         </div>
 
@@ -193,9 +323,13 @@ export function Monitor({
               </span>
             </div>
 
+            {active?.provider_reason ? (
+              <p className="provider-reason">{active.provider_reason}</p>
+            ) : null}
             <label>
               <span>Model</span>
               <select
+                aria-label="Model"
                 value={selectedModel}
                 onChange={(event) => setModelId(event.target.value)}
               >
@@ -213,6 +347,7 @@ export function Monitor({
             <label>
               <span>Source</span>
               <select
+                aria-label="Source"
                 value={selectedSource}
                 onChange={(event) => setSourceId(event.target.value)}
               >
@@ -225,6 +360,30 @@ export function Monitor({
                 ) : (
                   <option value="">Import a source first</option>
                 )}
+              </select>
+            </label>
+            <button
+              className="secondary preview-button"
+              type="button"
+              disabled={!selectedSource || busy !== null}
+              onClick={() =>
+                void act("preview", () => onPreview(selectedSource))
+              }
+            >
+              {busy === "preview" ? "Opening…" : "Preview source"}
+            </button>
+            <label>
+              <span>Compute device</span>
+              <select
+                aria-label="Compute device"
+                value={computeDevice}
+                onChange={(event) =>
+                  setComputeDevice(event.target.value as ComputeDevice)
+                }
+              >
+                <option value="auto">Auto</option>
+                <option value="nvidia">NVIDIA GPU</option>
+                <option value="cpu">CPU</option>
               </select>
             </label>
             <label>
@@ -241,6 +400,52 @@ export function Monitor({
                 Frame 0 is always included; sampling is deterministic.
               </small>
             </label>
+
+            <div className="recording-toggles">
+              <label className="check-row">
+                <input
+                  aria-label="Record data"
+                  type="checkbox"
+                  checked={recordData}
+                  onChange={(event) => setRecordData(event.target.checked)}
+                />
+                <span>Record data</span>
+              </label>
+              <label className="check-row">
+                <input
+                  aria-label="Record monitor"
+                  type="checkbox"
+                  checked={recordMonitor}
+                  onChange={(event) => setRecordMonitor(event.target.checked)}
+                />
+                <span>Record monitor</span>
+              </label>
+            </div>
+
+            <div className="overlay-grid">
+              <OverlayControls
+                title="Live preview overlays"
+                prefix="Preview"
+                value={previewOverlays}
+                capabilities={overlayCapabilities}
+                onChange={setPreviewOverlays}
+              />
+              <OverlayControls
+                title="Saved video overlays"
+                prefix="Recording"
+                value={recordingOverlays}
+                capabilities={overlayCapabilities}
+                onChange={setRecordingOverlays}
+              />
+            </div>
+            <div className="overlay-notes">
+              {(Object.keys(overlayCapabilities) as OverlayName[])
+                .filter((name) => !overlayCapabilities[name].supported)
+                .map((name) => (
+                  <small key={name}>{overlayCapabilities[name].reason}</small>
+                ))}
+            </div>
+
             <div className="action-row">
               <button
                 className="primary"
@@ -248,11 +453,7 @@ export function Monitor({
                 disabled={
                   !selectedModel || !selectedSource || running || busy !== null
                 }
-                onClick={() =>
-                  void act("run", () =>
-                    onStart(selectedModel, selectedSource, sampleEvery),
-                  )
-                }
+                onClick={() => void act("run", () => onStart(runOptions))}
               >
                 {busy === "run" ? "Starting…" : "Start inference"}
               </button>
@@ -322,18 +523,32 @@ export function Monitor({
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                void act("camera", () => onCamera(cameraDevice));
+                if (selectedCamera)
+                  void act("camera", () => onCamera(selectedCamera));
               }}
             >
-              <h4>Linux V4L2 camera</h4>
+              <h4>Windows capture device</h4>
               <label>
-                <span>Device path</span>
-                <input
-                  value={cameraDevice}
+                <span>Camera device</span>
+                <select
+                  value={selectedCamera}
                   onChange={(event) => setCameraDevice(event.target.value)}
-                />
+                >
+                  {captureDevices.length ? (
+                    captureDevices.map((device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.label}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No camera connected</option>
+                  )}
+                </select>
               </label>
-              <button className="secondary" disabled={busy !== null}>
+              <button
+                className="secondary"
+                disabled={!selectedCamera || busy !== null}
+              >
                 Connect camera
               </button>
             </form>
