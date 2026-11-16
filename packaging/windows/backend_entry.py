@@ -6,7 +6,6 @@ from pathlib import Path
 
 from reefvision_edge.cli import main
 
-
 if __name__ == "__main__":
     log_file = os.environ.get("REEFVISION_EDGE_LOG_FILE")
     if log_file:

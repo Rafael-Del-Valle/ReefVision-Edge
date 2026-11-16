@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 MSI = Path.home() / "Downloads" / "ReefVision-Edge-0.1.0-windows-x64.msi"
 EDGE_UPGRADE_CODE = "{C2F68AF2-90BF-4CD5-982C-42987B44F5E0}"
 REEFVISION_UPGRADE_CODE = "{5EDA8EE0-2A5D-5B08-A8DF-9BECFC3A4351}"
@@ -45,6 +44,10 @@ function Rows([string]$Sql, [int]$Columns) {
     [void]$view.Close()
     return $rows
 }
+$installDirectorySql = "SELECT ``Directory_Parent``, ``DefaultDir`` FROM ``Directory`` "
+$installDirectorySql += "WHERE ``Directory``='INSTALLFOLDER'"
+$programsDirectorySql = "SELECT ``Directory_Parent``, ``DefaultDir`` FROM ``Directory`` "
+$programsDirectorySql += "WHERE ``Directory``='EdgeProgramsFolder'"
 $result = [ordered]@{
     productName = Scalar "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ProductName'"
     productVersion = Scalar "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ProductVersion'"
@@ -52,8 +55,8 @@ $result = [ordered]@{
     upgradeCode = Scalar "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='UpgradeCode'"
     allUsers = Scalar "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ALLUSERS'"
     arpIcon = Scalar "SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ARPPRODUCTICON'"
-    installDirectory = Rows "SELECT ``Directory_Parent``, ``DefaultDir`` FROM ``Directory`` WHERE ``Directory``='INSTALLFOLDER'" 2
-    programsDirectory = Rows "SELECT ``Directory_Parent``, ``DefaultDir`` FROM ``Directory`` WHERE ``Directory``='EdgeProgramsFolder'" 2
+    installDirectory = Rows $installDirectorySql 2
+    programsDirectory = Rows $programsDirectorySql 2
     shortcuts = Rows "SELECT ``Directory_``, ``Name``, ``Target`` FROM ``Shortcut``" 3
 }
 $result | ConvertTo-Json -Compress -Depth 5

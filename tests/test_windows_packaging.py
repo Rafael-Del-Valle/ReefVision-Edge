@@ -6,7 +6,6 @@ import sys
 import zipfile
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = ROOT / "packaging" / "windows"
 VERIFIED_BUNDLE = ROOT / ".artifacts" / "reefvision-edge-offline-v0.1-bdc9d87"
@@ -47,6 +46,12 @@ def test_verified_application_wheel_contains_dashboard_assets() -> None:
         names = set(wheel.namelist())
 
     assert "reefvision_edge/static/index.html" in names
-    assert any(name.startswith("reefvision_edge/static/assets/") and name.endswith(".js") for name in names)
-    assert any(name.startswith("reefvision_edge/static/assets/") and name.endswith(".css") for name in names)
-
+    assert any(
+        name.startswith("reefvision_edge/static/assets/")
+        and name.endswith(".js")
+        for name in names
+    )
+    assert any(
+        name.startswith("reefvision_edge/static/assets/") and name.endswith(".css")
+        for name in names
+    )

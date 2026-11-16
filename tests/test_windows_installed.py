@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     os.environ.get("REEFVISION_EDGE_RUN_INSTALLED_TESTS") != "1",
     reason="set REEFVISION_EDGE_RUN_INSTALLED_TESTS=1 after installing the MSI",
