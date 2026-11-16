@@ -156,6 +156,24 @@ python3 -m venv .venv
 
 Jetson acceleration wheels are JetPack-specific and are not bundled or claimed by the Windows verification run. Install a compatible NVIDIA ONNX Runtime/TensorRT provider separately, then confirm `/api/capabilities` and the provider shown in the session.
 
+## Windows desktop MSI
+
+The Windows x64 MSI installs a self-contained desktop build for the current user. It includes the local Python service, dashboard assets, native inference dependencies, a WebView launcher, and a Start-menu shortcut; the installed app does not use the source checkout, a development server, or runtime downloads.
+
+```powershell
+.\scripts\build_windows_msi.ps1
+```
+
+The build verifies the checked-in offline bundle, stages the frozen backend, runs source-independent smoke tests, and writes `ReefVision-Edge-0.1.0-windows-x64.msi` to the current user's Downloads folder. The installed layout is intentionally separate from ReefVision:
+
+```text
+%LOCALAPPDATA%\Programs\ReefVision-Edge\  application and frozen backend
+%LOCALAPPDATA%\ReefVision-Edge\           models, media, sessions, and exports
+%APPDATA%\Microsoft\Windows\Start Menu\Programs\ReefVision-Edge\
+```
+
+The Start-menu launcher owns the packaged service, binds it to `127.0.0.1:8765`, opens the local dashboard in its own window, and stops the child service when that window closes. Run `.\scripts\acceptance_windows_installed.ps1` after installation to exercise deterministic recorded-video inference, preview retrieval, and export validation against the installed executable.
+
 ## Verification
 
 ```powershell
