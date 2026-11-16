@@ -37,19 +37,19 @@ Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` lo
 
 ## Windows RTX 3090 and Monitor acceptance
 
-- Tested commit: `ab4b94d262d5df04ac2c61f50795bd98b5b69cf0`.
-- Offline bundle: `C:\Users\rafae\Documents\ChatGPT\ReefVision-Edge\.artifacts\reefvision-edge-offline-windows-cuda-v0.1-ab4b94d` (1,324,565,177 bytes). Its metadata identifies `windows-x64`, runtime profile `cuda`, and the tested commit; every pinned runtime wheel is hash-locked. Frozen-backend diagnostics reported the same commit and runtime profile before acceptance ran.
+- Tested commit: `848ea8d5c3827db375196d6f2c7fb958bdb92781`.
+- Offline bundle: `C:\Users\rafae\Documents\ChatGPT\ReefVision-Edge\.artifacts\reefvision-edge-offline-windows-cuda-v0.1-848ea8d` (1,324,641,441 bytes). Its metadata identifies `windows-x64`, runtime profile `cuda`, and the tested commit; every pinned runtime wheel is hash-locked. Frozen-backend diagnostics reported the same commit and runtime profile before acceptance ran.
 - Frozen backend: `.artifacts\windows-msi\backend\reefvision-edge-backend\reefvision-edge-backend.exe`. It ran without the source checkout or runtime downloads and listened on loopback only.
 - Explicit NVIDIA GPU mode selected `NVIDIA GeForce RTX 3090` and `CUDAExecutionProvider`. Production code now accepts explicit GPU only after profiling the first inference and observing at least one CUDA-executed operator. A second packaged backend was run with CUDA hidden: explicit NVIDIA failed with an actionable zero-CUDA error, while Auto completed on `CPUExecutionProvider` and persisted the visible fallback reason.
 - ONNX Runtime profiling recorded CUDA execution for `Gemm`, `ReduceMean`, `Reshape`, and `Unsqueeze`. Both the short parity run and the sustained run recorded four profiled CUDA operator events and no CPU operator events; profiling is intentionally ended after the first inference because it is the production acceptance gate.
 - CPU/GPU parity passed on the same model and 12-frame clip: class IDs matched exactly, maximum confidence delta was `0.00000012` (tolerance `0.0001`), and maximum geometry delta was `0.0 px` (tolerance `0.5 px`).
 - Independent recording passed in all three combinations: data only, monitor video only, and both. The data export persisted timestamps, frame status, class, confidence, and geometry. Both 12-frame monitor recordings decoded at `160×90`.
-- Sustained replay with Record data and Record monitor enabled ran for `60.234 s`: input `126.348 FPS`, inference `742.301 FPS`, median inference latency `0.980 ms`, p95 `4.920 ms`, `0` dropped frames, 7,594 frame rows, and 15,188 detection rows. The reopened monitor video decoded all 7,594 frames at `160×90`.
+- Sustained replay with Record data and Record monitor enabled ran for `60.297 s`: input `124.111 FPS`, inference `710.466 FPS`, median inference latency `0.990 ms`, p95 `4.960 ms`, `0` dropped frames, 7,466 frame rows, and 14,932 detection rows. The reopened monitor video decoded all 7,466 frames at `160×90`; final median and p95 were recomputed from the complete bounded latency window at finalization.
 - Peak process VRAM is reported as unavailable. Windows WDDM returned `[N/A]` for per-process compute memory on this workstation; the app no longer substitutes or displays total system-wide GPU memory as though it belonged to ReefVision-Edge.
 - The packaged Monitor UI visibly showed the CUDA provider, RTX 3090, performance/drop metrics, separate Record data and Record monitor controls, separate live/saved overlay settings, and the unsupported trails/masks explanations. It also showed `No camera connected` in Windows capture-device discovery.
 - Timer, boxes, and labels are supported independently for live preview and saved video. Trails remain disabled until tracker IDs exist; masks remain disabled until the active model outputs segmentation masks.
 - GPU video encoding was not required for acceptance. The packaged software MP4 path remained enabled and its saved clips passed decode and overlay-manifest checks.
-- Acceptance artifacts: `.artifacts\windows-gpu-acceptance-final-ab4b94d\result.json`, `.artifacts\windows-gpu-acceptance-final-ab4b94d\fallback\fallback-result.json`, `.artifacts\windows-gpu-acceptance-final-ab4b94d\sustained.zip`, exported CSV files, ONNX Runtime operator profile, and decoded monitor video.
+- Acceptance artifacts: `.artifacts\windows-gpu-acceptance-final-848ea8d\result.json`, `.artifacts\windows-gpu-acceptance-final-848ea8d\fallback\fallback-result.json`, `.artifacts\windows-gpu-acceptance-final-848ea8d\sustained.zip`, exported CSV files, ONNX Runtime operator profile, and decoded monitor video.
 
 ## Installed Windows MSI acceptance
 
