@@ -20,7 +20,13 @@ from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
 from reefvision_edge.preview import PreviewStore
-from reefvision_edge.sources import RecordedVideoSource, SourceError, V4L2CameraSource
+from reefvision_edge.sources import (
+    RecordedVideoSource,
+    SourceError,
+    V4L2CameraSource,
+    WindowsCameraSource,
+    camera_source,
+)
 
 
 @dataclass(frozen=True)
@@ -208,13 +214,13 @@ class SessionRunner:
                 )
             source_record = self.media_store.get_record(record.source_id)
             source_path = Path(str(source_record["path"]))
-            camera: V4L2CameraSource | None = None
+            camera: V4L2CameraSource | WindowsCameraSource | None = None
             if source_record["kind"] == "video":
                 if not source_path.exists():
                     raise SourceError(f"Source media {source_path.name} is unavailable.")
                 source_frames = RecordedVideoSource(source_path).frames(record.sample_every)
             elif source_record["kind"] == "camera":
-                camera = V4L2CameraSource(source_path)
+                camera = camera_source(str(source_record["path"]))
                 source_frames = camera.frames(queue_size=1, stop_event=canceled)
             else:
                 raise SourceError(f"Unsupported source kind {source_record['kind']}.")

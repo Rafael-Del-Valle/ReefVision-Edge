@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from reefvision_edge.db import Database
-from reefvision_edge.sources import SourceError, V4L2CameraSource, VideoSource, probe_video
+from reefvision_edge.sources import SourceError, VideoSource, camera_source, probe_video
 
 
 class MediaStore:
@@ -135,11 +135,12 @@ class MediaStore:
             ).fetchall()
         return [self.get_record(row[0]) for row in identifiers]
 
-    def register_camera(self, device: Path) -> dict[str, object]:
-        V4L2CameraSource(device)
+    def register_camera(self, device: Path | str) -> dict[str, object]:
+        identifier = str(device)
+        camera_source(identifier)
         source_id = str(uuid.uuid4())
         metadata = json.dumps(
-            {"device": str(device), "timestamp_basis": "live capture order"},
+            {"device": identifier, "timestamp_basis": "live capture order"},
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -150,6 +151,6 @@ class MediaStore:
                     id, kind, name, path, sha256, metadata_json, created_at
                 ) VALUES (?, 'camera', ?, ?, NULL, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                 """,
-                (source_id, device.name, str(device), metadata),
+                (source_id, Path(identifier).name, identifier, metadata),
             )
         return self.get_record(source_id)

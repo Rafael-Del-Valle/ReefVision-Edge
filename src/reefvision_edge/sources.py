@@ -195,3 +195,87 @@ class V4L2CameraSource:
             stopped.set()
             capture.release()
             thread.join(timeout=2)
+
+
+class WindowsCameraSource:
+    def __init__(self, index: int, *, backend: str = "msmf") -> None:
+        if platform.system() != "Windows":
+            raise SourceError("Windows camera capture is available only on Windows.")
+        if index < 0:
+            raise SourceError("Camera index must not be negative.")
+        normalized = backend.casefold()
+        if normalized not in {"msmf", "dshow"}:
+            raise SourceError(f"Unsupported Windows camera backend {backend}.")
+        self.index = index
+        self.backend = normalized
+        self.dropped_frames = 0
+
+    @property
+    def identifier(self) -> str:
+        return f"camera:{self.backend}:{self.index}"
+
+    def frames(
+        self,
+        queue_size: int = 1,
+        stop_event: threading.Event | None = None,
+    ) -> Iterator[SourceFrame]:
+        backend_value = cv2.CAP_MSMF if self.backend == "msmf" else cv2.CAP_DSHOW
+        capture = cv2.VideoCapture(self.index, backend_value)
+        if not capture.isOpened():
+            capture.release()
+            raise SourceError(f"Camera {self.identifier} could not be opened.")
+        latest = NewestFrameQueue(queue_size)
+        stopped = threading.Event()
+        producer_done = threading.Event()
+        failure: list[str] = []
+
+        def produce() -> None:
+            try:
+                while not stopped.is_set():
+                    readable, frame = capture.read()
+                    if not readable:
+                        failure.append(
+                            f"Camera {self.identifier} stopped delivering frames."
+                        )
+                        return
+                    latest.put(cast(NDArray[np.uint8], frame))
+            finally:
+                producer_done.set()
+
+        thread = threading.Thread(
+            target=produce, name="reefvision-edge-windows-camera", daemon=True
+        )
+        thread.start()
+        frame_index = 0
+        try:
+            while True:
+                if stop_event is not None and stop_event.is_set():
+                    return
+                try:
+                    frame = latest.get(timeout=0.25)
+                except queue.Empty:
+                    if producer_done.is_set():
+                        raise SourceError(
+                            failure[0] if failure else "Camera capture ended."
+                        ) from None
+                    continue
+                self.dropped_frames = latest.dropped
+                yield SourceFrame(frame_index=frame_index, timestamp_ms=None, frame=frame)
+                frame_index += 1
+        finally:
+            stopped.set()
+            capture.release()
+            thread.join(timeout=2)
+
+
+def camera_source(identifier: str) -> V4L2CameraSource | WindowsCameraSource:
+    if identifier.startswith("camera:"):
+        fields = identifier.split(":")
+        if len(fields) != 3:
+            raise SourceError(f"Invalid Windows camera identifier {identifier}.")
+        try:
+            index = int(fields[2])
+        except ValueError as exc:
+            raise SourceError(f"Invalid Windows camera identifier {identifier}.") from exc
+        return WindowsCameraSource(index, backend=fields[1])
+    return V4L2CameraSource(Path(identifier))

@@ -42,6 +42,18 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
     assert source["codec"].strip() == "MJPG"
     assert source["width"] == 160
 
+    assert client.get("/api/capture-devices").status_code == 200
+    selected = client.post("/api/monitor/select", json={"source_id": source["id"]})
+    assert selected.status_code == 202
+    preview_deadline = time.monotonic() + 2
+    while time.monotonic() < preview_deadline:
+        monitor_status = client.get("/api/monitor/status").json()
+        if monitor_status["frame_index"] >= 0:
+            break
+        time.sleep(0.01)
+    assert monitor_status["state"] == "replaying"
+    assert client.get("/api/monitor/frame").headers["content-type"] == "image/jpeg"
+
     created_response = client.post(
         "/api/sessions",
         json={
@@ -76,6 +88,7 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
     assert created["preview_overlays"]["timer"] is False
     assert created["recording_overlays"]["boxes"] is False
     assert client.post(f"/api/sessions/{session_id}/start").status_code == 202
+    assert client.get("/api/monitor/status").json()["state"] == "idle"
 
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
@@ -144,7 +157,11 @@ def test_capabilities_and_settings_report_runtime_without_secrets(tmp_path: Path
     settings = client.get("/api/settings").json()
 
     assert "CPUExecutionProvider" in capabilities["available_providers"]
-    assert capabilities["camera_backend"] in {"V4L2", "unavailable"}
+    assert capabilities["camera_backend"] in {
+        "V4L2",
+        "Media Foundation / DirectShow",
+        "unavailable",
+    }
     assert capabilities["offline_runtime"] is True
     assert settings["bind_host"] == "127.0.0.1"
     assert settings["auth_required"] is False

@@ -15,6 +15,7 @@ from reefvision_edge.db import Database
 from reefvision_edge.exports import ExportService
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
+from reefvision_edge.monitor import MonitorPreviewService
 from reefvision_edge.preview import PreviewStore
 from reefvision_edge.sessions import SessionRunner, SessionService
 
@@ -39,12 +40,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     runner = SessionRunner(database, model_registry, media_store, previews)
     sessions = SessionService(database, runner)
     exports = ExportService(database, resolved.exports_dir)
+    monitor = MonitorPreviewService(media_store)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
             yield
         finally:
+            monitor.shutdown()
             sessions.shutdown(timeout=5)
 
     app = FastAPI(title="ReefVision-Edge", version=__version__, lifespan=lifespan)
@@ -56,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.runner = runner
     app.state.sessions = sessions
     app.state.exports = exports
+    app.state.monitor = monitor
 
     @app.middleware("http")
     async def authenticate(request: Request, call_next: object):  # type: ignore[no-untyped-def]
@@ -67,7 +71,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(
         create_api_router(
-            resolved, model_registry, media_store, sessions, previews, exports
+            resolved,
+            model_registry,
+            media_store,
+            sessions,
+            previews,
+            exports,
+            monitor,
         )
     )
 

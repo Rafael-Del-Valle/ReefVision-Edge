@@ -3,19 +3,20 @@ from __future__ import annotations
 import json
 import platform
 from dataclasses import asdict
-from pathlib import Path
 
 import onnxruntime as ort
 from fastapi import APIRouter, Form, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from reefvision_edge.capture_devices import discover_capture_devices
 from reefvision_edge.compute import ComputeChoice
 from reefvision_edge.config import Settings
 from reefvision_edge.domain import OverlaySettings, RegisteredModel
 from reefvision_edge.exports import ExportError, ExportService
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
+from reefvision_edge.monitor import MonitorPreviewService
 from reefvision_edge.preview import PreviewStore
 from reefvision_edge.sessions import SessionService
 from reefvision_edge.sources import SourceError
@@ -35,6 +36,10 @@ class SessionRequest(BaseModel):
     preview_overlays: OverlaySettings = OverlaySettings()
     recording_overlays: OverlaySettings = OverlaySettings()
     enable_profiling: bool = False
+
+
+class MonitorSelectRequest(BaseModel):
+    source_id: str = Field(min_length=1)
 
 
 def error_response(status_code: int, code: str, message: str) -> JSONResponse:
@@ -81,6 +86,7 @@ def create_api_router(
     sessions: SessionService,
     previews: PreviewStore,
     exports: ExportService,
+    monitor: MonitorPreviewService,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -88,7 +94,13 @@ def create_api_router(
     def capabilities() -> dict[str, object]:
         return {
             "available_providers": ort.get_available_providers(),
-            "camera_backend": "V4L2" if platform.system() == "Linux" else "unavailable",
+            "camera_backend": (
+                "V4L2"
+                if platform.system() == "Linux"
+                else "Media Foundation / DirectShow"
+                if platform.system() == "Windows"
+                else "unavailable"
+            ),
             "offline_runtime": True,
         }
 
@@ -123,6 +135,36 @@ def create_api_router(
     def list_sources() -> list[dict[str, object]]:
         return [source_response(source) for source in media_store.list()]
 
+    @router.get("/capture-devices")
+    def capture_devices() -> list[dict[str, object]]:
+        return [asdict(device) for device in discover_capture_devices()]
+
+    @router.get("/monitor/status")
+    def monitor_status() -> dict[str, object]:
+        return asdict(monitor.status())
+
+    @router.post("/monitor/select", status_code=202, response_model=None)
+    def monitor_select(request: MonitorSelectRequest) -> dict[str, object] | JSONResponse:
+        try:
+            return asdict(monitor.select(request.source_id))
+        except SourceError as exc:
+            return error_response(422, "source_unavailable", str(exc))
+
+    @router.post("/monitor/stop", status_code=202)
+    def monitor_stop() -> dict[str, object]:
+        monitor.stop()
+        return asdict(monitor.status())
+
+    @router.get("/monitor/frame", response_model=None)
+    def monitor_frame() -> Response | JSONResponse:
+        try:
+            value = monitor.jpeg()
+        except KeyError:
+            return error_response(404, "preview_not_found", "No monitor frame is available yet.")
+        except SourceError as exc:
+            return error_response(409, "preview_failed", str(exc))
+        return Response(value, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
     @router.post("/sources/video", status_code=201, response_model=None)
     def import_video(video: UploadFile) -> dict[str, object] | JSONResponse:
         try:
@@ -134,7 +176,7 @@ def create_api_router(
     @router.post("/sources/camera", status_code=201, response_model=None)
     def register_camera(request: CameraRequest) -> dict[str, object] | JSONResponse:
         try:
-            return source_response(media_store.register_camera(Path(request.device)))
+            return source_response(media_store.register_camera(request.device))
         except SourceError as exc:
             return error_response(422, "camera_unavailable", str(exc))
 
@@ -173,6 +215,7 @@ def create_api_router(
     )
     def start_session(session_id: str) -> dict[str, object] | JSONResponse:
         try:
+            monitor.release_for_inference(sessions.get(session_id).source_id)
             return asdict(sessions.start(session_id))
         except KeyError:
             return error_response(404, "session_not_found", "Session was not found.")

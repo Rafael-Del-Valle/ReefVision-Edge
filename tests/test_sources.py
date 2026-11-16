@@ -17,6 +17,7 @@ from reefvision_edge.sources import (
     SourceError,
     V4L2CameraSource,
     VideoProbe,
+    WindowsCameraSource,
     probe_video,
 )
 
@@ -126,3 +127,36 @@ def test_recorded_source_reports_early_decoder_failure(
 
     with pytest.raises(SourceError, match="ended early"):
         list(source.frames())
+
+
+def test_windows_camera_disconnect_releases_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DisconnectingCapture:
+        released = False
+        reads = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def read(self):  # type: ignore[no-untyped-def]
+            self.reads += 1
+            if self.reads == 1:
+                return True, np.zeros((2, 2, 3), dtype=np.uint8)
+            return False, None
+
+        def release(self) -> None:
+            self.released = True
+
+    capture = DisconnectingCapture()
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        "reefvision_edge.sources.cv2.VideoCapture", lambda *_args: capture
+    )
+    source = WindowsCameraSource(0, backend="msmf")
+    frames = source.frames()
+
+    assert next(frames).frame_index == 0
+    with pytest.raises(SourceError, match="stopped delivering"):
+        next(frames)
+    assert capture.released is True
