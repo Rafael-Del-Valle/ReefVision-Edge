@@ -15,7 +15,9 @@ from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
 from reefvision_edge.preview import PreviewStore
-from reefvision_edge.sources import RecordedVideoSource, SourceError
+from pathlib import Path
+
+from reefvision_edge.sources import RecordedVideoSource, SourceError, V4L2CameraSource
 
 
 @dataclass(frozen=True)
@@ -108,11 +110,19 @@ class SessionRunner:
                     """,
                     (detector.model.provider, session_id),
                 )
-            source = self.media_store.get(record.source_id)
-            if not source.path.exists():
-                raise SourceError(f"Source media {source.path.name} is unavailable.")
-            recorded = RecordedVideoSource(source.path)
-            for source_frame in recorded.frames(record.sample_every):
+            source_record = self.media_store.get_record(record.source_id)
+            source_path = Path(str(source_record["path"]))
+            camera: V4L2CameraSource | None = None
+            if source_record["kind"] == "video":
+                if not source_path.exists():
+                    raise SourceError(f"Source media {source_path.name} is unavailable.")
+                source_frames = RecordedVideoSource(source_path).frames(record.sample_every)
+            elif source_record["kind"] == "camera":
+                camera = V4L2CameraSource(source_path)
+                source_frames = camera.frames(queue_size=1)
+            else:
+                raise SourceError(f"Unsupported source kind {source_record['kind']}.")
+            for source_frame in source_frames:
                 if canceled.is_set():
                     self._finish(session_id, "canceled", processed, detection_count, started, latency_total)
                     return
@@ -166,7 +176,12 @@ class SessionRunner:
                     result.detections,
                 )
                 self._update_progress(
-                    session_id, processed, detection_count, started, latency_total
+                    session_id,
+                    processed,
+                    detection_count,
+                    started,
+                    latency_total,
+                    camera.dropped_frames if camera else 0,
                 )
             terminal = "canceled" if canceled.is_set() else "completed"
             self._finish(
@@ -182,6 +197,7 @@ class SessionRunner:
         detections: int,
         started: float,
         latency_total: float,
+        dropped_frames: int = 0,
     ) -> None:
         elapsed = max(time.perf_counter() - started, 1e-9)
         with self.database.connect() as connection:
@@ -189,6 +205,7 @@ class SessionRunner:
                 """
                 UPDATE sessions SET frame_count = ?, detection_count = ?,
                     inference_fps = ?, average_latency_ms = ?,
+                    dropped_frames = ?,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 WHERE id = ?
                 """,
@@ -197,6 +214,7 @@ class SessionRunner:
                     detections,
                     processed / elapsed,
                     latency_total / processed,
+                    dropped_frames,
                     session_id,
                 ),
             )
@@ -254,7 +272,7 @@ class SessionService:
         if sample_every < 1:
             raise ValueError("sample_every must be at least one")
         self.runner.model_registry.get(model_id)
-        self.runner.media_store.get(source_id)
+        self.runner.media_store.get_record(source_id)
         session_id = str(uuid.uuid4())
         settings = json.dumps({"sample_every": sample_every}, separators=(",", ":"))
         with self.database.connect() as connection:

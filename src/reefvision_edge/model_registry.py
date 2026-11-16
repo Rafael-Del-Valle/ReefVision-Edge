@@ -134,6 +134,13 @@ class ModelRegistry:
             available_providers=tuple(ort.get_available_providers()),
         )
 
+    def list(self) -> list[RegisteredModel]:
+        with self.database.connect() as connection:
+            identifiers = connection.execute(
+                "SELECT id FROM models ORDER BY created_at DESC"
+            ).fetchall()
+        return [self.get(row[0]) for row in identifiers]
+
     @staticmethod
     def _durable_write(path: Path, value: bytes) -> None:
         with path.open("wb") as stream:

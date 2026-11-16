@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from reefvision_edge.db import Database
-from reefvision_edge.sources import SourceError, VideoSource, probe_video
+from reefvision_edge.sources import SourceError, V4L2CameraSource, VideoSource, probe_video
 
 
 class MediaStore:
@@ -93,3 +93,50 @@ class MediaStore:
             sha256=row[3],
             probe=VideoProbe(**metadata),
         )
+
+    def get_record(self, source_id: str) -> dict[str, object]:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, kind, name, path, sha256, metadata_json, created_at
+                FROM sources WHERE id = ?
+                """,
+                (source_id,),
+            ).fetchone()
+        if row is None:
+            raise SourceError(f"Source {source_id} was not found.")
+        return {
+            "id": row[0],
+            "kind": row[1],
+            "name": row[2],
+            "path": row[3],
+            "sha256": row[4],
+            "metadata": json.loads(row[5]),
+            "created_at": row[6],
+        }
+
+    def list(self) -> list[dict[str, object]]:
+        with self.database.connect() as connection:
+            identifiers = connection.execute(
+                "SELECT id FROM sources ORDER BY created_at DESC"
+            ).fetchall()
+        return [self.get_record(row[0]) for row in identifiers]
+
+    def register_camera(self, device: Path) -> dict[str, object]:
+        V4L2CameraSource(device)
+        source_id = str(uuid.uuid4())
+        metadata = json.dumps(
+            {"device": str(device), "timestamp_basis": "live capture order"},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO sources (
+                    id, kind, name, path, sha256, metadata_json, created_at
+                ) VALUES (?, 'camera', ?, ?, NULL, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                """,
+                (source_id, device.name, str(device), metadata),
+            )
+        return self.get_record(source_id)

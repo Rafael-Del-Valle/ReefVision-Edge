@@ -23,6 +23,18 @@ class Settings(BaseSettings):
         return self.data_dir / "reefvision-edge.sqlite3"
 
     @property
+    def models_dir(self) -> Path:
+        return self.data_dir / "models"
+
+    @property
+    def media_dir(self) -> Path:
+        return self.data_dir / "media"
+
+    @property
+    def exports_dir(self) -> Path:
+        return self.data_dir / "exports"
+
+    @property
     def is_loopback(self) -> bool:
         if self.bind_host.casefold() == "localhost":
             return True
