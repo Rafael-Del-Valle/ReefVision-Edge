@@ -9,6 +9,7 @@ import pytest
 from tests.fixtures.build_tiny_model import build_tiny_yolo_model
 from tests.test_model_registry import valid_metadata
 
+from reefvision_edge.compute import ComputeChoice, ComputeDeviceError
 from reefvision_edge.db import Database
 from reefvision_edge.geometry import letterbox, restore_box
 from reefvision_edge.inference import YoloOnnxDetector, provider_assignment_summary
@@ -111,3 +112,35 @@ def test_provider_assignment_summary_makes_cpu_fallback_explicit() -> None:
             return ["CPUExecutionProvider"]
 
     assert provider_assignment_summary(CpuSession()) == "CPUExecutionProvider (45 nodes)"
+
+
+def test_explicit_nvidia_detector_does_not_fall_back_when_session_creation_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_path = build_tiny_yolo_model(tmp_path / "tiny.onnx")
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    registered = ModelRegistry(database, tmp_path / "models").register(
+        io.BytesIO(model_path.read_bytes()), "tiny.onnx", valid_metadata()
+    )
+    monkeypatch.setattr(
+        "reefvision_edge.inference.resolve_compute",
+        lambda _choice: __import__(
+            "reefvision_edge.compute", fromlist=["ComputeResolution"]
+        ).ComputeResolution(
+            requested=ComputeChoice.NVIDIA_GPU,
+            providers=("CUDAExecutionProvider", "CPUExecutionProvider"),
+            active_provider="CUDAExecutionProvider",
+            actual_device="NVIDIA GeForce RTX 3090",
+            explanation="NVIDIA GPU was selected explicitly.",
+            fell_back=False,
+        ),
+    )
+
+    def fail_cuda(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("cudnn64_9.dll was not found")
+
+    monkeypatch.setattr("reefvision_edge.inference.ort.InferenceSession", fail_cuda)
+
+    with pytest.raises(ComputeDeviceError, match=r"cudnn64_9\.dll"):
+        YoloOnnxDetector(registered, ComputeChoice.NVIDIA_GPU)

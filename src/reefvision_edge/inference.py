@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import time
 from collections import Counter
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
 import onnxruntime as ort
 from numpy.typing import NDArray
 
+from reefvision_edge.compute import (
+    ComputeChoice,
+    ComputeDeviceError,
+    ComputeResolution,
+    OperatorProfile,
+    cpu_fallback,
+    parse_ort_profile,
+    resolve_compute,
+)
 from reefvision_edge.domain import Detection, InferenceResult, RegisteredModel
 from reefvision_edge.geometry import letterbox, restore_box
-from reefvision_edge.model_registry import select_provider
 
 
 class _AssignedSubgraph(Protocol):
@@ -83,19 +92,58 @@ def non_maximum_suppression(
 
 
 class YoloOnnxDetector:
-    def __init__(self, model: RegisteredModel) -> None:
+    def __init__(
+        self,
+        model: RegisteredModel,
+        compute_choice: ComputeChoice | str = ComputeChoice.AUTO,
+        enable_profiling: bool = False,
+    ) -> None:
         self.model = model
-        selected_provider = select_provider(ort.get_available_providers())
+        self.compute = resolve_compute(compute_choice)
         options = ort.SessionOptions()
+        options.enable_profiling = enable_profiling
         if hasattr(ort.InferenceSession, "get_provider_graph_assignment_info"):
             options.add_session_config_entry(
                 "session.record_ep_graph_assignment_info", "1"
             )
-        self.session = ort.InferenceSession(
-            str(model.path), sess_options=options, providers=[selected_provider]
-        )
+        try:
+            self.session = ort.InferenceSession(
+                str(model.path),
+                sess_options=options,
+                providers=list(self.compute.providers),
+            )
+        except Exception as exc:
+            if self.compute.requested is not ComputeChoice.AUTO:
+                raise ComputeDeviceError(
+                    f"{self.compute.requested.value} inference could not initialize: {exc}"
+                ) from exc
+            self.compute = cpu_fallback(self.compute.requested, str(exc))
+            try:
+                self.session = ort.InferenceSession(
+                    str(model.path),
+                    sess_options=options,
+                    providers=list(self.compute.providers),
+                )
+            except Exception as cpu_exc:
+                raise ComputeDeviceError(
+                    f"CPU fallback could not initialize ONNX Runtime: {cpu_exc}"
+                ) from cpu_exc
         self.input_name = self.session.get_inputs()[0].name
         self.provider = provider_assignment_summary(self.session)
+        self.profile_path: Path | None = None
+        self.profile: OperatorProfile | None = None
+
+    @property
+    def resolution(self) -> ComputeResolution:
+        return self.compute
+
+    def finish_profile(self) -> OperatorProfile | None:
+        if not self.session.get_session_options().enable_profiling:
+            return None
+        if self.profile is None:
+            self.profile_path = Path(self.session.end_profiling())
+            self.profile = parse_ort_profile(self.profile_path)
+        return self.profile
 
     def predict(self, frame: NDArray[np.uint8]) -> InferenceResult:
         started = time.perf_counter()

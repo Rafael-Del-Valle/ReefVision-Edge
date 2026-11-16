@@ -28,13 +28,8 @@ def canonical_metadata_bytes(metadata: ModelMetadata) -> bytes:
 
 
 def select_provider(available: list[str]) -> str:
-    for provider in (
-        "TensorrtExecutionProvider",
-        "CUDAExecutionProvider",
-        "CPUExecutionProvider",
-    ):
-        if provider in available:
-            return provider
+    if "CPUExecutionProvider" in available:
+        return "CPUExecutionProvider"
     raise ModelRegistrationError("No supported ONNX Runtime execution provider is available.")
 
 
