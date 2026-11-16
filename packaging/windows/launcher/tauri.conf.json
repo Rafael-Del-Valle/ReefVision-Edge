@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ReefVision-Edge",
+  "mainBinaryName": "ReefVision-Edge",
+  "version": "0.1.0",
+  "identifier": "org.reefvision.edge.desktop",
+  "build": {
+    "frontendDist": "../launcher-dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

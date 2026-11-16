@@ -1,0 +1,14 @@
+[package]
+name = "reefvision-edge-launcher"
+version = "0.1.0"
+edition = "2021"
+description = "ReefVision-Edge Windows desktop launcher"
+authors = ["Rafael Del Valle"]
+license = "AGPL-3.0-only"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
