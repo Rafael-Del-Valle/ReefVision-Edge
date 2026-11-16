@@ -1,1 +1,0 @@
-{"root":["./src/app.test.tsx","./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/metric.tsx","./src/components/statusbadge.test.tsx","./src/components/statusbadge.tsx","./src/test/setup.ts","./src/views/monitor.tsx","./src/views/sessions.tsx","./src/views/settings.tsx","./vite.config.ts"],"version":"5.7.3"}
