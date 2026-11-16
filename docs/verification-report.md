@@ -14,19 +14,19 @@ Date: 2026-11-16 (America/New_York)
 
 - OS: Microsoft Windows 11 Home, version `10.0.26300`, build `26300`, 64-bit.
 - CPU: AMD Ryzen Threadripper PRO 9955WX, 16 cores / 32 logical processors.
-- GPU present: NVIDIA GeForce RTX 3090, driver `32.0.16.1742`; this does not imply ONNX acceleration availability.
+- GPU: NVIDIA GeForce RTX 3090 (24 GB), NVIDIA driver `617.42`, CUDA driver API `13.4`.
 - Python `3.12.10`; Node `v26.13.0`; npm `11.20.0`.
 - NumPy `2.2.6`; OpenCV `4.14.0` with FFmpeg enabled; ONNX Runtime `1.32.0`.
-- ONNX Runtime providers discovered: `AzureExecutionProvider`, `CPUExecutionProvider`.
-- Provider actually selected and verified: `CPUExecutionProvider`.
+- Packaged Windows CUDA runtime: ONNX Runtime GPU `1.32.0`, CUDA runtime `13.4.92`, cuDNN `9.28.1.4`, cuBLAS `13.4.1.3`.
+- Packaged providers discovered: `TensorrtExecutionProvider`, `CUDAExecutionProvider`, and `CPUExecutionProvider`. TensorRT is not packaged or accepted; actual inference was verified on `CUDAExecutionProvider`.
 - System `ffmpeg` command: unavailable. Decoder evidence comes from the OpenCV build and actual synthetic fixture run.
 
 Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` loaded successfully, so the project caps NumPy below `2.3` until newer builds are requalified.
 
 ## Automated evidence
 
-- Backend: 46 tests pass, including model/metadata rejection and upload limits, run-time provider reselection and graph-assignment/fallback reporting, deterministic ONNX inference, letterbox reversal/clipping, media copying/probing, early decoder failure, unavailable camera, bounded work/cancellation/shutdown, atomic counters, stale-run reconciliation, simulated disk/database-full failure, zero-detection export round trip, API workflow, packaged assets, CLI LAN safety, and fresh-app session/preview reopen/export.
-- Frontend: 4 Vitest component tests pass.
+- Backend: 83 tests pass and 3 opt-in Windows tests skip in the default run. The focused packaged-backend test also passes against the frozen executable with the checkout source moved out of reach.
+- Frontend: 5 Vitest component tests pass.
 - TypeScript: clean project typecheck.
 - Production dashboard: Vite build succeeds with bundled local assets.
 - Browser: 3 Playwright scenarios pass against the running production app: complete upload/run/reload/export workflow, computed theme parity, and screenshot capture.
@@ -34,6 +34,22 @@ Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` lo
 - Deterministic ONNX fixture: fixed 640×640 input and two known detections; the known coral box maps back to original coordinates `(60, 35, 100, 55)` on the 160×90 fixture.
 - Restart: a completed session and its persisted latest-frame preview were opened and exported from a new FastAPI application instance using the same SQLite/data directory.
 - Security: non-loopback startup without credentials is rejected; authenticated LAN middleware covers UI, API, previews, and exports. Loopback mode rejects untrusted Host headers and cross-origin mutations.
+
+## Windows RTX 3090 and Monitor acceptance
+
+- Tested commit: `1c4a4c8feabeeb32b7d6d7b15f08babe630fdb53`.
+- Offline bundle: `C:\Users\rafae\Documents\ChatGPT\ReefVision-Edge\.artifacts\reefvision-edge-offline-windows-cuda-v0.1-1c4a4c8` (1,324,484,020 bytes). Its metadata identifies `windows-x64`, runtime profile `cuda`, and the tested commit; every pinned runtime wheel is hash-locked.
+- Frozen backend: `.artifacts\windows-msi\backend\reefvision-edge-backend\reefvision-edge-backend.exe`. It ran without the source checkout or runtime downloads and listened on loopback only.
+- Explicit NVIDIA GPU mode selected `NVIDIA GeForce RTX 3090` and `CUDAExecutionProvider`. The same explicit mode is tested to return an actionable error when CUDA initialization fails; Auto records a visible CPU fallback reason.
+- ONNX Runtime profiling recorded CUDA execution for `Gemm`, `ReduceMean`, `Reshape`, and `Unsqueeze`. The short parity run recorded 48 CUDA operator events and no CPU operator events. The sustained run recorded 2,392 CUDA operator events and no CPU operator events.
+- CPU/GPU parity passed on the same model and 12-frame clip: class IDs matched exactly, maximum confidence delta was `0.00000012` (tolerance `0.0001`), and maximum geometry delta was `0.0 px` (tolerance `0.5 px`).
+- Independent recording passed in all three combinations: data only, monitor video only, and both. The data export persisted timestamps, frame status, class, confidence, and geometry. Both 12-frame monitor recordings decoded at `160×90`.
+- Sustained replay with Record data and Record monitor enabled ran for `60.328 s`: input `9.959 FPS`, inference `859.645 FPS`, median inference latency `1.168 ms`, p95 `1.791 ms`, `0` dropped frames, 598 frame rows, and 1,196 detection rows. The reopened monitor video decoded all 598 frames at `160×90`.
+- Peak reported VRAM was `1,198 MB`. Windows WDDM reports per-process compute memory as `[N/A]` on this workstation, so this value is the peak total `nvidia-smi memory.used` while the isolated acceptance backend was running, not a process-attributable measurement.
+- The packaged Monitor UI visibly showed the CUDA provider, RTX 3090, performance/drop metrics, separate Record data and Record monitor controls, separate live/saved overlay settings, and the unsupported trails/masks explanations. It also showed `No camera connected` in Windows capture-device discovery.
+- Timer, boxes, and labels are supported independently for live preview and saved video. Trails remain disabled until tracker IDs exist; masks remain disabled until the active model outputs segmentation masks.
+- GPU video encoding was not required for acceptance. The packaged software MP4 path remained enabled and its saved clips passed decode and overlay-manifest checks.
+- Acceptance artifacts: `.artifacts\windows-gpu-acceptance\result.json`, `.artifacts\windows-gpu-acceptance\sustained.zip`, exported CSV files, ONNX Runtime operator profile, and decoded monitor video.
 
 ## Installed Windows MSI acceptance
 
@@ -63,7 +79,7 @@ Monitor, Sessions, and Settings were rendered at 1440×900 and 390×844. The rev
 - TensorRT/CUDA ONNX Runtime providers on Jetson.
 - Native systemd startup on Jarvis.
 - Sustained recorded-video performance and thermal/resource behavior on Jarvis.
-- Live UVC/V4L2 capture, camera unplug behavior on physical hardware, and USB HDMI capture.
+- Physical Windows camera capture and unplug/reconnect behavior (no capture camera was connected); live UVC/V4L2 capture and USB HDMI capture on Jetson.
 - DJI Mini 3/RM330 or Sony A7RIII real footage codecs/containers.
 - Direct DJI controller streaming and Sony live capture.
 - Biological accuracy of any real coral model.
