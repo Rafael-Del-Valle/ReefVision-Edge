@@ -90,7 +90,14 @@ Assert-That ($source.sha256 -eq $videoSha256) "Installed video upload returned t
 
 $session = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions" `
     -ContentType "application/json" `
-    -Body (@{model_id=$model.id;source_id=$source.id;sample_every=2} | ConvertTo-Json -Compress)
+    -Body (@{
+        model_id=$model.id
+        source_id=$source.id
+        sample_every=2
+        compute_device="cpu"
+        record_data=$true
+        record_monitor=$false
+    } | ConvertTo-Json -Compress)
 $null = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions/$($session.id)/start"
 
 $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -117,7 +124,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($exportPath)
 try {
     $names = @($archive.Entries | ForEach-Object FullName)
-    Assert-That (($names -join ",") -eq "manifest.json,detections.csv") "Installed export contains unexpected files."
+    Assert-That (($names -join ",") -eq "manifest.json,frames.csv,detections.csv") "Installed export contains unexpected files."
     $manifestEntry = $archive.GetEntry("manifest.json")
     $reader = [System.IO.StreamReader]::new($manifestEntry.Open())
     try { $manifest = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }

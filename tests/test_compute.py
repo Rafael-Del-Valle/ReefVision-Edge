@@ -136,3 +136,19 @@ def test_vram_sampler_returns_memory_for_current_process(
     monkeypatch.setattr("reefvision_edge.compute.subprocess.run", lambda *_a, **_k: Result())
 
     assert sample_process_vram_mb() == 512.0
+
+
+def test_vram_sampler_falls_back_to_total_used_memory_under_windows_wddm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Result:
+        def __init__(self, stdout: str) -> None:
+            self.stdout = stdout
+
+    results = iter([Result("4321, [N/A]\n"), Result("950\n")])
+    monkeypatch.setattr("reefvision_edge.compute.os.getpid", lambda: 4321)
+    monkeypatch.setattr(
+        "reefvision_edge.compute.subprocess.run", lambda *_a, **_k: next(results)
+    )
+
+    assert sample_process_vram_mb() == 950.0
