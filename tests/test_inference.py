@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -59,3 +60,20 @@ def test_detector_returns_classified_boxes_in_original_frame_pixels(tmp_path: Pa
     first = result.detections[0]
     assert first.score == pytest.approx(0.9, abs=1e-5)
     assert first.box == pytest.approx((480.0, 280.0, 800.0, 440.0))
+
+
+def test_detector_reselects_provider_when_registration_snapshot_is_stale(
+    tmp_path: Path,
+) -> None:
+    model_path = build_tiny_yolo_model(tmp_path / "tiny.onnx")
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    registered = ModelRegistry(database, tmp_path / "models").register(
+        io.BytesIO(model_path.read_bytes()), "tiny.onnx", valid_metadata()
+    )
+
+    detector = YoloOnnxDetector(
+        replace(registered, provider="UnavailableExecutionProvider")
+    )
+
+    assert "CPUExecutionProvider" in detector.provider

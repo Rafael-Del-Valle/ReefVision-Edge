@@ -16,6 +16,7 @@ from reefvision_edge.sources import (
     RecordedVideoSource,
     SourceError,
     V4L2CameraSource,
+    VideoProbe,
     probe_video,
 )
 
@@ -41,6 +42,17 @@ def test_import_copies_video_without_changing_supplied_bytes(tmp_path: Path) -> 
     assert source.probe.frame_count == 5
     assert source.probe.fps == pytest.approx(10.0)
     assert source.probe.codec.strip() == "MJPG"
+
+
+def test_video_upload_limit_removes_partial_copy(tmp_path: Path) -> None:
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    store = MediaStore(database, tmp_path / "media", max_video_bytes=4)
+
+    with pytest.raises(SourceError, match="upload limit"):
+        store.import_video(io.BytesIO(b"12345"), "large.avi")
+
+    assert list((tmp_path / "media").glob("*")) == []
 
 
 def test_recorded_sampling_starts_at_zero_and_is_deterministic(tmp_path: Path) -> None:
@@ -86,3 +98,31 @@ def test_newest_frame_queue_discards_oldest_when_full() -> None:
 
     assert queue.dropped == 1
     assert np.array_equal(queue.get(timeout=0.01), second)
+
+
+def test_recorded_source_reports_early_decoder_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class BrokenCapture:
+        def __init__(self) -> None:
+            self.reads = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def read(self):  # type: ignore[no-untyped-def]
+            self.reads += 1
+            if self.reads == 1:
+                return True, np.zeros((2, 2, 3), dtype=np.uint8)
+            return False, None
+
+        def release(self) -> None:
+            return None
+
+    source = object.__new__(RecordedVideoSource)
+    source.path = tmp_path / "truncated.avi"
+    source.probe = VideoProbe(2, 2, 10.0, 3, "MJPG", "avi")
+    monkeypatch.setattr("reefvision_edge.sources.cv2.VideoCapture", lambda _: BrokenCapture())
+
+    with pytest.raises(SourceError, match="ended early"):
+        list(source.frames())

@@ -25,15 +25,15 @@ Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` lo
 
 ## Automated evidence
 
-- Backend: 36 tests pass, including model/metadata rejection, deterministic ONNX inference, letterbox reversal/clipping, media copying/probing, unavailable camera, cancellation, stale-run recovery, simulated disk/database-full failure, zero-detection export round trip, API workflow, packaged assets, CLI LAN safety, and fresh-app session reopen/export.
+- Backend: 45 tests pass, including model/metadata rejection and upload limits, run-time provider reselection, deterministic ONNX inference, letterbox reversal/clipping, media copying/probing, early decoder failure, unavailable camera, bounded work/cancellation/shutdown, atomic counters, stale-run reconciliation, simulated disk/database-full failure, zero-detection export round trip, API workflow, packaged assets, CLI LAN safety, and fresh-app session/preview reopen/export.
 - Frontend: 4 Vitest component tests pass.
 - TypeScript: clean project typecheck.
 - Production dashboard: Vite build succeeds with bundled local assets.
 - Browser: 3 Playwright scenarios pass against the running production app: complete upload/run/reload/export workflow, computed theme parity, and screenshot capture.
 - Recorded fixture: AVI/MJPG, 160×90, 10 FPS, 5 frames. Sampling every two frames persisted indices `0, 2, 4` and timestamps `0, 200, 400 ms`.
 - Deterministic ONNX fixture: fixed 640×640 input and two known detections; the known coral box maps back to original coordinates `(60, 35, 100, 55)` on the 160×90 fixture.
-- Restart: a completed session was opened and exported from a new FastAPI application instance using the same SQLite/data directory.
-- Security: non-loopback startup without credentials is rejected; authenticated LAN middleware covers UI, API, previews, and exports.
+- Restart: a completed session and its persisted latest-frame preview were opened and exported from a new FastAPI application instance using the same SQLite/data directory.
+- Security: non-loopback startup without credentials is rejected; authenticated LAN middleware covers UI, API, previews, and exports. Loopback mode rejects untrusted Host headers and cross-origin mutations.
 
 Exact final command output is recorded in the Git task history and final delivery report.
 

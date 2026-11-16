@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     bind_port: int = Field(default=8765, ge=1, le=65535)
     auth_username: str | None = None
     auth_password: str | None = None
+    max_model_upload_bytes: int = Field(default=512 * 1024 * 1024, ge=1)
+    max_video_upload_bytes: int = Field(default=256 * 1024 * 1024 * 1024, ge=1)
 
     @property
     def database_path(self) -> Path:
@@ -33,6 +35,10 @@ class Settings(BaseSettings):
     @property
     def exports_dir(self) -> Path:
         return self.data_dir / "exports"
+
+    @property
+    def previews_dir(self) -> Path:
+        return self.data_dir / "previews"
 
     @property
     def is_loopback(self) -> bool:

@@ -16,7 +16,9 @@ from reefvision_edge.config import Settings
 
 
 def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
-    client = TestClient(create_app(Settings(data_dir=tmp_path / "data")))
+    client = TestClient(
+        create_app(Settings(data_dir=tmp_path / "data")), base_url="http://127.0.0.1"
+    )
     model_path = build_tiny_yolo_model(tmp_path / "tiny.onnx")
     video_path = build_mjpeg_video(tmp_path / "source.avi")
 
@@ -76,7 +78,9 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
 
 
 def test_api_returns_structured_model_video_and_camera_errors(tmp_path: Path) -> None:
-    client = TestClient(create_app(Settings(data_dir=tmp_path / "data")))
+    client = TestClient(
+        create_app(Settings(data_dir=tmp_path / "data")), base_url="http://127.0.0.1"
+    )
 
     invalid_model = client.post(
         "/api/models",
@@ -101,7 +105,9 @@ def test_api_returns_structured_model_video_and_camera_errors(tmp_path: Path) ->
 
 
 def test_capabilities_and_settings_report_runtime_without_secrets(tmp_path: Path) -> None:
-    client = TestClient(create_app(Settings(data_dir=tmp_path / "data")))
+    client = TestClient(
+        create_app(Settings(data_dir=tmp_path / "data")), base_url="http://127.0.0.1"
+    )
 
     capabilities = client.get("/api/capabilities").json()
     settings = client.get("/api/settings").json()

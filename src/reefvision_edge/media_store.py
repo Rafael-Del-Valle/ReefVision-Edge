@@ -13,9 +13,16 @@ from reefvision_edge.sources import SourceError, V4L2CameraSource, VideoSource, 
 
 
 class MediaStore:
-    def __init__(self, database: Database, storage_dir: Path) -> None:
+    def __init__(
+        self,
+        database: Database,
+        storage_dir: Path,
+        *,
+        max_video_bytes: int = 256 * 1024 * 1024 * 1024,
+    ) -> None:
         self.database = database
         self.storage_dir = storage_dir
+        self.max_video_bytes = max_video_bytes
 
     def import_video(self, stream: BinaryIO, filename: str) -> VideoSource:
         safe_name = Path(filename).name
@@ -27,9 +34,15 @@ class MediaStore:
         target_dir.mkdir(parents=True, exist_ok=False)
         target = target_dir / f"source{suffix}"
         digest = hashlib.sha256()
+        stored_bytes = 0
         try:
             with target.open("wb") as output:
                 while chunk := stream.read(1024 * 1024):
+                    stored_bytes += len(chunk)
+                    if stored_bytes > self.max_video_bytes:
+                        raise SourceError(
+                            f"Video exceeds the {self.max_video_bytes}-byte upload limit."
+                        )
                     output.write(chunk)
                     digest.update(chunk)
                 output.flush()

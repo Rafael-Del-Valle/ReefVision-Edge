@@ -140,6 +140,14 @@ test.describe.serial("ReefVision-Edge field workflow", () => {
     );
     const completed = page.getByRole("status", { name: "completed" });
     await expect(completed).toHaveCSS("color", "rgb(114, 219, 201)");
+    const primary = page.getByRole("button", { name: "Start inference" });
+    await expect(primary).toHaveCSS(
+      "background-image",
+      "linear-gradient(135deg, rgb(128, 221, 206), rgb(114, 219, 201))",
+    );
+    const monitorTab = page.getByRole("tab", { name: "Monitor" });
+    await monitorTab.focus();
+    await expect(monitorTab).toHaveCSS("outline-color", "rgb(114, 219, 201)");
     await completed.evaluate((element) => {
       for (const state of ["running", "interrupted", "failed"]) {
         const clone = element.cloneNode(true) as HTMLElement;

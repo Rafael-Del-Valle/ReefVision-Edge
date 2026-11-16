@@ -22,7 +22,9 @@ def test_packaged_dashboard_assets_are_served_without_runtime_network(tmp_path: 
     index = package_root.joinpath("static", "index.html")
     assert index.is_file()
 
-    client = TestClient(create_app(Settings(data_dir=tmp_path / "data")))
+    client = TestClient(
+        create_app(Settings(data_dir=tmp_path / "data")), base_url="http://127.0.0.1"
+    )
     response = client.get("/")
 
     assert response.status_code == 200
@@ -63,7 +65,7 @@ def test_completed_session_reopens_and_exports_after_app_restart(tmp_path: Path)
     settings = Settings(data_dir=tmp_path / "data")
     model_path = build_tiny_yolo_model(tmp_path / "tiny.onnx")
     video_path = build_mjpeg_video(tmp_path / "source.avi")
-    with TestClient(create_app(settings)) as first:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1") as first:
         model = first.post(
             "/api/models",
             files={"model": ("tiny.onnx", model_path.read_bytes())},
@@ -86,11 +88,15 @@ def test_completed_session_reopens_and_exports_after_app_restart(tmp_path: Path)
             time.sleep(0.02)
         assert completed["status"] == "completed"
 
-    with TestClient(create_app(settings)) as restarted:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1") as restarted:
         reopened = restarted.get(f"/api/sessions/{session['id']}")
+        preview = restarted.get(f"/api/previews/{session['id']}")
         exported = restarted.get(f"/api/sessions/{session['id']}/export")
 
     assert reopened.status_code == 200
     assert reopened.json()["detection_count"] == 6
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/jpeg"
+    assert preview.headers["x-frame-index"] == "4"
     assert exported.status_code == 200
     assert exported.content.startswith(b"PK")

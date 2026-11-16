@@ -39,9 +39,16 @@ def select_provider(available: list[str]) -> str:
 
 
 class ModelRegistry:
-    def __init__(self, database: Database, storage_dir: Path) -> None:
+    def __init__(
+        self,
+        database: Database,
+        storage_dir: Path,
+        *,
+        max_model_bytes: int = 512 * 1024 * 1024,
+    ) -> None:
         self.database = database
         self.storage_dir = storage_dir
+        self.max_model_bytes = max_model_bytes
 
     def register(
         self,
@@ -57,9 +64,13 @@ class ModelRegistry:
             metadata = ModelMetadata.model_validate(metadata_value)
         except ValidationError as exc:
             raise ModelRegistrationError(str(exc)) from exc
-        model_bytes = model_stream.read()
+        model_bytes = model_stream.read(self.max_model_bytes + 1)
         if not model_bytes:
             raise ModelRegistrationError("The ONNX model file is empty.")
+        if len(model_bytes) > self.max_model_bytes:
+            raise ModelRegistrationError(
+                f"The ONNX model exceeds the {self.max_model_bytes}-byte upload limit."
+            )
 
         available = ort.get_available_providers()
         provider = select_provider(available)

@@ -10,7 +10,7 @@ The Python service and React dashboard are served from one origin. It binds to `
 
 - Local `.onnx` object detectors with explicit class, input, preprocessing, and output metadata.
 - `ultralytics_yolo_detect_v1`: fixed NCHW RGB float32 input, centered letterbox, `[1, 4 + classes, candidates]` output, `xywh` input-pixel boxes, and per-class confidence values.
-- ONNX Runtime provider detection with the provider actually used stored in every session/export. CPU is the portable baseline.
+- ONNX Runtime provider detection with the runtime-selected provider chain stored in every session/export. CPU is the portable baseline; ONNX Runtime may still assign individual nodes to a fallback provider.
 - Immutable copies of local AVI, MP4, MOV, M4V, and MKV uploads, subject to the codecs in the installed OpenCV/FFmpeg build.
 - Linux V4L2 camera paths such as `/dev/video0`, with a bounded newest-frame queue.
 - Deterministic recorded sampling: frame zero and every Nth frame; timestamps use `frame_index / reported_fps` when constant-rate metadata exists.
@@ -90,6 +90,7 @@ data/
 ├── reefvision-edge.sqlite3
 ├── models/<model UUID>/model.onnx
 ├── media/<source UUID>/source.<container>
+├── previews/<session hash>.preview
 └── exports/<session UUID>.zip
 ```
 
@@ -97,7 +98,7 @@ SQLite uses WAL mode. Each processed frame is committed independently so earlier
 
 ## Headless Jarvis deployment
 
-Create a dedicated account and storage path using your normal station administration process; this project does not change drivers, firewall rules, JetPack, or system firmware. Copy [deploy/reefvision-edge.service](deploy/reefvision-edge.service) to `/etc/systemd/system/` only after updating `User`, `Group`, `WorkingDirectory`, `EnvironmentFile`, and paths.
+Create a dedicated account and storage path using your normal station administration process; this project does not change drivers, firewall rules, JetPack, or system firmware. The example unit uses `SupplementaryGroups=video`, which is the usual permission path for `/dev/video*`; confirm the device group on Jarvis and adjust it if needed. Copy [deploy/reefvision-edge.service](deploy/reefvision-edge.service) to `/etc/systemd/system/` only after updating `User`, `Group`, `WorkingDirectory`, `EnvironmentFile`, and paths.
 
 Example `/etc/reefvision-edge.env`:
 

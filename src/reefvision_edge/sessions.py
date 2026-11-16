@@ -6,7 +6,8 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from reefvision_edge.db import Database
 from reefvision_edge.domain import RegisteredModel
 from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
-from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
+from reefvision_edge.model_registry import ModelRegistry
 from reefvision_edge.preview import PreviewStore
 from reefvision_edge.sources import RecordedVideoSource, SourceError, V4L2CameraSource
 
@@ -60,18 +61,50 @@ class SessionRunner:
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="reefvision-edge-session"
         )
+        self._max_workers = max_workers
         self._lock = threading.Lock()
         self._cancel: dict[str, threading.Event] = {}
         self._futures: dict[str, Future[None]] = {}
 
     def start(self, session_id: str) -> None:
         with self._lock:
+            self._futures = {
+                key: future for key, future in self._futures.items() if not future.done()
+            }
+            self._cancel = {
+                key: event for key, event in self._cancel.items() if key in self._futures
+            }
             existing = self._futures.get(session_id)
             if existing is not None and not existing.done():
                 raise RuntimeError(f"Session {session_id} is already running.")
+            if len(self._futures) >= self._max_workers:
+                raise RuntimeError("Session worker capacity is currently full.")
+            with self.database.connect() as connection:
+                claimed = connection.execute(
+                    """
+                    UPDATE sessions SET status = 'running', error_message = NULL,
+                        completed_at = NULL,
+                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    WHERE id = ? AND status = 'queued'
+                    """,
+                    (session_id,),
+                ).rowcount
+            if claimed != 1:
+                raise ValueError(f"Session {session_id} is not queued.")
             event = threading.Event()
             self._cancel[session_id] = event
-            self._futures[session_id] = self._executor.submit(self.run, session_id, event)
+            try:
+                self._futures[session_id] = self._executor.submit(
+                    self.run, session_id, event
+                )
+            except Exception:
+                with self.database.connect() as connection:
+                    connection.execute(
+                        "UPDATE sessions SET status = 'queued' WHERE id = ?",
+                        (session_id,),
+                    )
+                self._cancel.pop(session_id, None)
+                raise
 
     def stop(self, session_id: str) -> bool:
         with self._lock:
@@ -87,6 +120,15 @@ class SessionRunner:
         if future is not None:
             future.result(timeout=timeout)
 
+    def shutdown(self, timeout: float = 5) -> None:
+        with self._lock:
+            events = tuple(self._cancel.values())
+            futures = tuple(self._futures.values())
+        for event in events:
+            event.set()
+        _, pending = wait(futures, timeout=timeout) if futures else (set(), set())
+        self._executor.shutdown(wait=not pending, cancel_futures=True)
+
     def run(
         self, session_id: str, cancel_event: threading.Event | None = None
     ) -> None:
@@ -97,17 +139,31 @@ class SessionRunner:
         latency_total = 0.0
         try:
             record = _get_session(self.database, session_id)
+            if record.status == "queued":
+                with self.database.connect() as connection:
+                    connection.execute(
+                        """
+                        UPDATE sessions SET status = 'running', error_message = NULL,
+                            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        WHERE id = ? AND status = 'queued'
+                        """,
+                        (session_id,),
+                    )
+            elif record.status != "running":
+                raise RuntimeError(
+                    f"Session {session_id} cannot run from {record.status}."
+                )
             model = self.model_registry.get(record.model_id)
             detector = self.detector_factory(model)
             with self.database.connect() as connection:
                 connection.execute(
                     """
-                    UPDATE sessions SET status = 'running', provider = ?,
+                    UPDATE sessions SET provider = ?,
                         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                         error_message = NULL
-                    WHERE id = ? AND status = 'queued'
+                    WHERE id = ? AND status = 'running'
                     """,
-                    (detector.model.provider, session_id),
+                    (detector.provider, session_id),
                 )
             source_record = self.media_store.get_record(record.source_id)
             source_path = Path(str(source_record["path"]))
@@ -118,22 +174,19 @@ class SessionRunner:
                 source_frames = RecordedVideoSource(source_path).frames(record.sample_every)
             elif source_record["kind"] == "camera":
                 camera = V4L2CameraSource(source_path)
-                source_frames = camera.frames(queue_size=1)
+                source_frames = camera.frames(queue_size=1, stop_event=canceled)
             else:
                 raise SourceError(f"Unsupported source kind {source_record['kind']}.")
             for source_frame in source_frames:
                 if canceled.is_set():
-                    self._finish(
-                        session_id,
-                        "canceled",
-                        processed,
-                        detection_count,
-                        started,
-                        latency_total,
-                    )
+                    self._finish(session_id, "canceled")
                     return
                 result = detector.predict(source_frame.frame)
                 frame_id = str(uuid.uuid4())
+                next_processed = processed + 1
+                next_detection_count = detection_count + len(result.detections)
+                next_latency_total = latency_total + result.latency_ms
+                elapsed = max(time.perf_counter() - started, 1e-9)
                 with self.database.connect() as connection:
                     connection.execute(
                         """
@@ -171,9 +224,27 @@ class SessionRunner:
                             for detection in result.detections
                         ],
                     )
-                processed += 1
-                detection_count += len(result.detections)
-                latency_total += result.latency_ms
+                    connection.execute(
+                        """
+                        UPDATE sessions SET frame_count = ?, detection_count = ?,
+                            inference_fps = ?, average_latency_ms = ?, provider = ?,
+                            dropped_frames = ?,
+                            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        WHERE id = ? AND status = 'running'
+                        """,
+                        (
+                            next_processed,
+                            next_detection_count,
+                            next_processed / elapsed,
+                            next_latency_total / next_processed,
+                            result.provider,
+                            camera.dropped_frames if camera else 0,
+                            session_id,
+                        ),
+                    )
+                processed = next_processed
+                detection_count = next_detection_count
+                latency_total = next_latency_total
                 self.previews.put(
                     session_id,
                     source_frame.frame_index,
@@ -181,63 +252,16 @@ class SessionRunner:
                     source_frame.frame,
                     result.detections,
                 )
-                self._update_progress(
-                    session_id,
-                    processed,
-                    detection_count,
-                    started,
-                    latency_total,
-                    camera.dropped_frames if camera else 0,
-                )
             terminal = "canceled" if canceled.is_set() else "completed"
-            self._finish(
-                session_id, terminal, processed, detection_count, started, latency_total
-            )
-        except (SourceError, ModelRegistrationError, OSError, sqlite3.Error, RuntimeError) as exc:
-            self._fail(session_id, str(exc), processed, detection_count, started, latency_total)
-
-    def _update_progress(
-        self,
-        session_id: str,
-        processed: int,
-        detections: int,
-        started: float,
-        latency_total: float,
-        dropped_frames: int = 0,
-    ) -> None:
-        elapsed = max(time.perf_counter() - started, 1e-9)
-        with self.database.connect() as connection:
-            connection.execute(
-                """
-                UPDATE sessions SET frame_count = ?, detection_count = ?,
-                    inference_fps = ?, average_latency_ms = ?,
-                    dropped_frames = ?,
-                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-                WHERE id = ?
-                """,
-                (
-                    processed,
-                    detections,
-                    processed / elapsed,
-                    latency_total / processed,
-                    dropped_frames,
-                    session_id,
-                ),
-            )
+            self._finish(session_id, terminal)
+        except Exception as exc:
+            self._fail_safely(session_id, str(exc) or type(exc).__name__)
 
     def _finish(
         self,
         session_id: str,
         status: str,
-        processed: int,
-        detections: int,
-        started: float,
-        latency_total: float,
     ) -> None:
-        if processed:
-            self._update_progress(
-                session_id, processed, detections, started, latency_total
-            )
         with self.database.connect() as connection:
             connection.execute(
                 """
@@ -253,13 +277,7 @@ class SessionRunner:
         self,
         session_id: str,
         message: str,
-        processed: int,
-        detections: int,
-        started: float,
-        latency_total: float,
     ) -> None:
-        if processed:
-            self._update_progress(session_id, processed, detections, started, latency_total)
         with self.database.connect() as connection:
             connection.execute(
                 """
@@ -270,6 +288,14 @@ class SessionRunner:
                 """,
                 (message, session_id),
             )
+
+    def _fail_safely(self, session_id: str, message: str) -> None:
+        try:
+            self._fail(session_id, message)
+        except sqlite3.Error:
+            self.database.release_emergency_reserve()
+            with suppress(sqlite3.Error):
+                self._fail(session_id, message)
 
 
 class SessionService:
@@ -320,6 +346,9 @@ class SessionService:
         elif record.status == "running":
             self.runner.stop(session_id)
         return self.get(session_id)
+
+    def shutdown(self, timeout: float = 5) -> None:
+        self.runner.shutdown(timeout)
 
     def get(self, session_id: str) -> SessionRecord:
         return _get_session(self.database, session_id)

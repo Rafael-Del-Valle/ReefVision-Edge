@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -23,14 +25,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     database = Database(resolved.database_path)
     database.initialize()
     database.recover_interrupted_sessions()
-    model_registry = ModelRegistry(database, resolved.models_dir)
-    media_store = MediaStore(database, resolved.media_dir)
-    previews = PreviewStore()
+    model_registry = ModelRegistry(
+        database,
+        resolved.models_dir,
+        max_model_bytes=resolved.max_model_upload_bytes,
+    )
+    media_store = MediaStore(
+        database,
+        resolved.media_dir,
+        max_video_bytes=resolved.max_video_upload_bytes,
+    )
+    previews = PreviewStore(resolved.previews_dir)
     runner = SessionRunner(database, model_registry, media_store, previews)
     sessions = SessionService(database, runner)
     exports = ExportService(database, resolved.exports_dir)
 
-    app = FastAPI(title="ReefVision-Edge", version=__version__)
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            sessions.shutdown(timeout=5)
+
+    app = FastAPI(title="ReefVision-Edge", version=__version__, lifespan=lifespan)
     app.state.settings = resolved
     app.state.database = database
     app.state.model_registry = model_registry

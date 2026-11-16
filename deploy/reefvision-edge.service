@@ -7,6 +7,7 @@ Wants=local-fs.target
 Type=simple
 User=reefvision-edge
 Group=reefvision-edge
+SupplementaryGroups=video
 WorkingDirectory=/opt/reefvision-edge
 EnvironmentFile=/etc/reefvision-edge.env
 ExecStart=/opt/reefvision-edge/.venv/bin/reefvision-edge

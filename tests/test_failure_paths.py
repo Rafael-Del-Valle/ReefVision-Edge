@@ -51,6 +51,8 @@ def test_database_write_failure_preserves_earlier_frames_and_fails_session(
     failed = service.get(session.id)
     assert failed.status == "failed"
     assert "disk" in (failed.error_message or "").casefold()
+    assert failed.frame_count == 2
+    assert failed.detection_count == 4
     with database.connect() as connection:
         committed = connection.execute(
             "SELECT frame_index FROM frames WHERE session_id = ? ORDER BY frame_index",
@@ -70,4 +72,32 @@ def test_service_restart_recovers_running_session(tmp_path: Path) -> None:
     recovered = database.recover_interrupted_sessions()
 
     assert recovered == 1
-    assert service.get(session.id).status == "interrupted"
+    recovered_session = service.get(session.id)
+    assert recovered_session.status == "interrupted"
+    assert recovered_session.frame_count == 0
+
+
+def test_restart_reconciles_committed_frames_before_interrupting(tmp_path: Path) -> None:
+    database, model, source, _, _, service = prepared_services(tmp_path)
+    session = service.create(model.id, source.id, sample_every=1)
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE sessions SET status = 'running', frame_count = 0 WHERE id = ?",
+            (session.id,),
+        )
+        connection.execute(
+            """
+            INSERT INTO frames (
+                id, session_id, frame_index, timestamp_ms, width, height,
+                latency_ms, created_at
+            ) VALUES ('frame-1', ?, 0, 0, 160, 90, 1,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            """,
+            (session.id,),
+        )
+
+    database.recover_interrupted_sessions()
+
+    recovered = service.get(session.id)
+    assert recovered.status == "interrupted"
+    assert recovered.frame_count == 1

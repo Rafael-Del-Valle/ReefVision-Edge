@@ -97,6 +97,15 @@ class Database:
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """
             )
+        reserve = self.path.parent / ".reefvision-edge-emergency-reserve"
+        if not reserve.exists():
+            with reserve.open("wb") as stream:
+                stream.write(b"\0" * 65536)
+
+    def release_emergency_reserve(self) -> None:
+        (self.path.parent / ".reefvision-edge-emergency-reserve").unlink(
+            missing_ok=True
+        )
 
     def recover_interrupted_sessions(self) -> int:
         with self.connect() as connection:
@@ -104,6 +113,18 @@ class Database:
                 """
                 UPDATE sessions
                 SET status = 'interrupted',
+                    frame_count = (
+                        SELECT COUNT(*) FROM frames WHERE frames.session_id = sessions.id
+                    ),
+                    detection_count = (
+                        SELECT COUNT(*) FROM detections
+                        JOIN frames ON frames.id = detections.frame_id
+                        WHERE frames.session_id = sessions.id
+                    ),
+                    average_latency_ms = (
+                        SELECT AVG(latency_ms) FROM frames
+                        WHERE frames.session_id = sessions.id
+                    ),
                     error_message = 'Service restarted before the session completed.',
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

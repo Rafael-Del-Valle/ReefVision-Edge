@@ -233,6 +233,20 @@ def _read_export(path: Path) -> tuple[bytes, bytes]:
         raise ExportError(f"Export bundle is incomplete or invalid: {exc}") from exc
 
 
+def _integer(value: object, field: str) -> int:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ExportError(f"{field} must be an integer.") from exc
+
+
+def _number(value: object, field: str) -> float:
+    try:
+        return float(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ExportError(f"{field} must be numeric.") from exc
+
+
 def validate_export(path: Path) -> ExportSummary:
     try:
         manifest_bytes, csv_bytes = _read_export(path)
@@ -246,7 +260,12 @@ def validate_export(path: Path) -> ExportSummary:
     model = manifest.get("model", {})
     source = manifest.get("source", {})
     frames = manifest.get("frames", [])
+    if not isinstance(session, dict) or not isinstance(model, dict) or not isinstance(source, dict):
+        raise ExportError("Manifest provenance records are invalid.")
     class_map = model.get("class_map", {})
+    dimensions = source.get("dimensions", {})
+    if not isinstance(class_map, dict) or not isinstance(dimensions, dict):
+        raise ExportError("Manifest class map or source dimensions are invalid.")
     if not re.fullmatch(r"[0-9a-f]{64}", str(model.get("sha256", ""))):
         raise ExportError("Model SHA-256 is missing or invalid.")
     if not re.fullmatch(r"[0-9a-f]{64}", str(model.get("metadata_sha256", ""))):
@@ -257,14 +276,18 @@ def validate_export(path: Path) -> ExportSummary:
     for frame in frames:
         if not isinstance(frame, dict):
             raise ExportError("Frame record is invalid.")
-        frame_index = int(frame.get("frame_index", -1))
+        frame_index = _integer(frame.get("frame_index", -1), "frame_index")
         if frame_index < 0 or frame_index in frame_map:
             raise ExportError("Frame indices must be unique non-negative integers.")
-        if int(frame.get("width", 0)) <= 0 or int(frame.get("height", 0)) <= 0:
+        if _integer(frame.get("width", 0), "frame width") <= 0 or _integer(
+            frame.get("height", 0), "frame height"
+        ) <= 0:
             raise ExportError("Frame dimensions must be positive.")
         frame_map[frame_index] = frame
-    source_width = int(source.get("dimensions", {}).get("width") or 0)
-    source_height = int(source.get("dimensions", {}).get("height") or 0)
+    source_width = _integer(dimensions.get("width") or 0, "source width")
+    source_height = _integer(
+        dimensions.get("height") or 0, "source height"
+    )
     if frames and (source_width <= 0 or source_height <= 0):
         raise ExportError("Source dimensions are missing or invalid.")
     session_id = str(session.get("id", ""))
@@ -274,36 +297,48 @@ def validate_export(path: Path) -> ExportSummary:
             raise ExportError("Unsupported detection row schema.")
         if row.get("session_id") != session_id:
             raise ExportError("Detection row belongs to a different session.")
-        frame_index = int(row["frame_index"])
+        if row.get("model_id") != str(model.get("id", "")):
+            raise ExportError("Detection row references a different model.")
+        if row.get("source_id") != str(source.get("id", "")):
+            raise ExportError("Detection row references a different source.")
+        frame_index = _integer(row.get("frame_index"), "detection frame_index")
         frame = frame_map.get(frame_index)
         if frame is None:
             raise ExportError("Detection row references an unknown frame.")
         detection_counts[frame_index] = detection_counts.get(frame_index, 0) + 1
-        class_id = int(row["class_id"])
+        class_id = _integer(row.get("class_id"), "class_id")
         if class_map.get(str(class_id)) != row["class_name"]:
             raise ExportError("Detection class does not match the manifest class map.")
-        score = float(row["score"])
+        score = _number(row.get("score"), "score")
         x_min, y_min, x_max, y_max = (
-            float(row[key]) for key in ("x_min", "y_min", "x_max", "y_max")
+            _number(row.get(key), key) for key in ("x_min", "y_min", "x_max", "y_max")
         )
         if not 0 <= score <= 1:
             raise ExportError("Detection score is outside [0, 1].")
-        width = int(frame["width"])
-        height = int(frame["height"])
-        if int(row["source_width"]) != width or int(row["source_height"]) != height:
+        width = _integer(frame.get("width"), "frame width")
+        height = _integer(frame.get("height"), "frame height")
+        if _integer(row.get("source_width"), "source_width") != width or _integer(
+            row.get("source_height"), "source_height"
+        ) != height:
             raise ExportError("Detection dimensions do not match the frame record.")
         if not (0 <= x_min < x_max <= width and 0 <= y_min < y_max <= height):
             raise ExportError("Detection coordinates are outside source dimensions.")
-    if len(rows) != int(session.get("detection_count", -1)):
+    if len(rows) != _integer(session.get("detection_count", -1), "detection_count"):
         raise ExportError("Detection count does not match the manifest.")
-    if len(frame_map) != int(session.get("frame_count", -1)):
+    if len(frame_map) != _integer(session.get("frame_count", -1), "frame_count"):
         raise ExportError("Frame count does not match the manifest.")
     for frame_index, frame in frame_map.items():
-        if int(frame.get("detection_count", -1)) != detection_counts.get(frame_index, 0):
+        if _integer(
+            frame.get("detection_count", -1), "frame detection_count"
+        ) != detection_counts.get(frame_index, 0):
             raise ExportError("Per-frame detection count does not match the manifest.")
+    try:
+        class_names = tuple(class_map[str(index)] for index in range(len(class_map)))
+    except KeyError as exc:
+        raise ExportError("Manifest class IDs must be contiguous from zero.") from exc
     return ExportSummary(
         session_id=session_id,
         frame_count=len(frame_map),
         detection_count=len(rows),
-        class_names=tuple(class_map[str(index)] for index in range(len(class_map))),
+        class_names=class_names,
     )

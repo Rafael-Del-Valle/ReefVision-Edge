@@ -120,6 +120,41 @@ def test_validator_rejects_unsafe_zip_member(tmp_path: Path) -> None:
         validate_export(archive)
 
 
+def test_validator_rejects_inconsistent_row_provenance_and_malformed_numbers(
+    tmp_path: Path,
+) -> None:
+    _, _, _, session, exporter = completed_export(tmp_path)
+    original = exporter.build_zip(session.id)
+    with zipfile.ZipFile(original) as bundle:
+        manifest = bundle.read("manifest.json")
+        rows = list(csv.DictReader(io.StringIO(bundle.read("detections.csv").decode())))
+
+    rows[0]["model_id"] = "different-model"
+    rows[0]["score"] = "not-a-number"
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=rows[0].keys(), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    tampered = tmp_path / "tampered.zip"
+    with zipfile.ZipFile(tampered, "w") as bundle:
+        bundle.writestr("manifest.json", manifest)
+        bundle.writestr("detections.csv", output.getvalue())
+
+    with pytest.raises(ExportError, match="different model"):
+        validate_export(tampered)
+
+    rows[0]["model_id"] = json.loads(manifest)["model"]["id"]
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=rows[0].keys(), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    with zipfile.ZipFile(tampered, "w") as bundle:
+        bundle.writestr("manifest.json", manifest)
+        bundle.writestr("detections.csv", output.getvalue())
+    with pytest.raises(ExportError, match="score must be numeric"):
+        validate_export(tampered)
+
+
 def test_checked_in_sample_round_trips() -> None:
     summary = validate_export(Path("examples/session-export"))
 

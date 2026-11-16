@@ -62,3 +62,27 @@ def test_bad_basic_credentials_are_rejected(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_loopback_rejects_foreign_origins_and_untrusted_hosts(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(Settings(data_dir=tmp_path)), base_url="http://127.0.0.1"
+    )
+
+    foreign = client.post(
+        "/api/sources/camera",
+        json={"device": "/dev/video0"},
+        headers={"Origin": "https://attacker.example"},
+    )
+    rebound = client.get(
+        "/api/health", headers={"Host": "attacker.example"}
+    )
+    same_origin = client.post(
+        "/api/sources/camera",
+        json={"device": "/dev/video0"},
+        headers={"Origin": "http://127.0.0.1"},
+    )
+
+    assert foreign.status_code == 403
+    assert rebound.status_code == 400
+    assert same_origin.status_code != 403

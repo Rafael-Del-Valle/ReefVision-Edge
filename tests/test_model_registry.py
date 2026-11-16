@@ -85,3 +85,12 @@ def test_rejects_output_dimension_that_disagrees_with_class_map(tmp_path: Path) 
         registry(tmp_path).register(
             io.BytesIO(model_path.read_bytes()), "three-class.onnx", valid_metadata()
         )
+
+
+def test_model_upload_limit_is_enforced_before_runtime_load(tmp_path: Path) -> None:
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    limited = ModelRegistry(database, tmp_path / "models", max_model_bytes=4)
+
+    with pytest.raises(ModelRegistrationError, match="upload limit"):
+        limited.register(io.BytesIO(b"12345"), "large.onnx", valid_metadata())

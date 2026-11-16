@@ -91,6 +91,14 @@ class RecordedVideoSource:
             while True:
                 readable, frame = capture.read()
                 if not readable:
+                    if (
+                        self.probe.frame_count > 1
+                        and frame_index < self.probe.frame_count - 1
+                    ):
+                        raise SourceError(
+                            f"Video decoder ended early at frame {frame_index} of "
+                            f"{self.probe.frame_count} for {self.path.name}."
+                        )
                     break
                 if frame_index % sample_every == 0:
                     timestamp_ms = (
@@ -141,7 +149,11 @@ class V4L2CameraSource:
         self.device = device
         self.dropped_frames = 0
 
-    def frames(self, queue_size: int = 1) -> Iterator[SourceFrame]:
+    def frames(
+        self,
+        queue_size: int = 1,
+        stop_event: threading.Event | None = None,
+    ) -> Iterator[SourceFrame]:
         capture = cv2.VideoCapture(str(self.device), cv2.CAP_V4L2)
         if not capture.isOpened():
             raise SourceError(f"Camera device {self.device} could not be opened.")
@@ -166,6 +178,8 @@ class V4L2CameraSource:
         frame_index = 0
         try:
             while True:
+                if stop_event is not None and stop_event.is_set():
+                    return
                 try:
                     frame = latest.get(timeout=0.25)
                 except queue.Empty:

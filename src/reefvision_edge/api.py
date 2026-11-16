@@ -99,7 +99,7 @@ def create_api_router(
         return [model_response(model) for model in model_registry.list()]
 
     @router.post("/models", status_code=201, response_model=None)
-    async def register_model(
+    def register_model(
         model: UploadFile,
         metadata_json: str = Form(),
     ) -> dict[str, object] | JSONResponse:
@@ -117,7 +117,7 @@ def create_api_router(
         return [source_response(source) for source in media_store.list()]
 
     @router.post("/sources/video", status_code=201, response_model=None)
-    async def import_video(video: UploadFile) -> dict[str, object] | JSONResponse:
+    def import_video(video: UploadFile) -> dict[str, object] | JSONResponse:
         try:
             stored = media_store.import_video(video.file, video.filename or "video")
             return source_response(media_store.get_record(stored.id))
@@ -163,7 +163,7 @@ def create_api_router(
             return asdict(sessions.start(session_id))
         except KeyError:
             return error_response(404, "session_not_found", "Session was not found.")
-        except ValueError as exc:
+        except (ValueError, RuntimeError) as exc:
             return error_response(409, "invalid_state", str(exc))
 
     @router.post(

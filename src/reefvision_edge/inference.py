@@ -8,6 +8,7 @@ from numpy.typing import NDArray
 
 from reefvision_edge.domain import Detection, InferenceResult, RegisteredModel
 from reefvision_edge.geometry import letterbox, restore_box
+from reefvision_edge.model_registry import select_provider
 
 
 def _iou(
@@ -44,10 +45,12 @@ def non_maximum_suppression(
 class YoloOnnxDetector:
     def __init__(self, model: RegisteredModel) -> None:
         self.model = model
+        selected_provider = select_provider(ort.get_available_providers())
         self.session = ort.InferenceSession(
-            str(model.path), providers=[model.provider]
+            str(model.path), providers=[selected_provider]
         )
         self.input_name = self.session.get_inputs()[0].name
+        self.provider = " -> ".join(self.session.get_providers())
 
     def predict(self, frame: NDArray[np.uint8]) -> InferenceResult:
         started = time.perf_counter()
@@ -91,5 +94,5 @@ class YoloOnnxDetector:
         return InferenceResult(
             detections=non_maximum_suppression(detections, metadata.iou_threshold),
             latency_ms=latency_ms,
-            provider=self.session.get_providers()[0],
+            provider=self.provider,
         )

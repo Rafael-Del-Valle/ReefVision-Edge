@@ -30,7 +30,7 @@ def prepared_services(tmp_path: Path, *, frame_count: int = 5):
     video_path = build_mjpeg_video(tmp_path / "source.avi", frame_count=frame_count)
     media_store = MediaStore(database, tmp_path / "media")
     source = media_store.import_video(io.BytesIO(video_path.read_bytes()), "source.avi")
-    previews = PreviewStore()
+    previews = PreviewStore(tmp_path / "previews")
     runner = SessionRunner(database, model_registry, media_store, previews)
     service = SessionService(database, runner)
     return database, model, source, previews, runner, service
@@ -72,6 +72,11 @@ def test_recorded_session_persists_metrics_detections_and_preview(tmp_path: Path
     assert preview.detection_count == 2
     decoded = cv2.imdecode(np.frombuffer(preview.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
     assert decoded.shape == (90, 160, 3)
+
+    restored = PreviewStore(tmp_path / "previews").get(session.id)
+    assert restored.frame_index == 4
+    assert restored.detection_count == 2
+    assert restored.jpeg == preview.jpeg
 
 
 def test_running_session_can_be_canceled_with_committed_progress(tmp_path: Path) -> None:
@@ -117,3 +122,61 @@ def test_preview_overlay_draws_box_at_original_coordinates() -> None:
 
     assert tuple(rendered[30, 20]) != (0, 0, 0)
     assert tuple(frame[30, 20]) == (0, 0, 0)
+
+
+def test_runner_bounds_concurrent_work_and_shutdown_cancels_active_job(
+    tmp_path: Path,
+) -> None:
+    database, model, source, previews, _, _ = prepared_services(
+        tmp_path, frame_count=40
+    )
+
+    class SlowDetector(YoloOnnxDetector):
+        def predict(self, frame):  # type: ignore[no-untyped-def]
+            time.sleep(0.02)
+            return super().predict(frame)
+
+    runner = SessionRunner(
+        database,
+        ModelRegistry(database, tmp_path / "models"),
+        MediaStore(database, tmp_path / "media"),
+        previews,
+        detector_factory=SlowDetector,
+    )
+    service = SessionService(database, runner)
+    first = service.create(model.id, source.id)
+    second = service.create(model.id, source.id)
+
+    service.start(first.id)
+    with pytest.raises(RuntimeError, match="capacity"):
+        service.start(second.id)
+    assert service.get(first.id).status == "running"
+    assert service.get(second.id).status == "queued"
+
+    service.shutdown(timeout=3)
+
+    assert service.get(first.id).status == "canceled"
+
+
+def test_unexpected_detector_error_finishes_failed(tmp_path: Path) -> None:
+    database, model, source, previews, _, _ = prepared_services(tmp_path)
+
+    class BrokenDetector(YoloOnnxDetector):
+        def predict(self, frame):  # type: ignore[no-untyped-def]
+            raise ValueError("unexpected detector failure")
+
+    runner = SessionRunner(
+        database,
+        ModelRegistry(database, tmp_path / "models"),
+        MediaStore(database, tmp_path / "media"),
+        previews,
+        detector_factory=BrokenDetector,
+    )
+    service = SessionService(database, runner)
+    session = service.create(model.id, source.id)
+
+    runner.run(session.id)
+
+    failed = service.get(session.id)
+    assert failed.status == "failed"
+    assert failed.error_message == "unexpected detector failure"
