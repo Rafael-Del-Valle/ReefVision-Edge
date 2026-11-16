@@ -183,11 +183,11 @@ export function App() {
               const created = await api.createSession(options);
               setActiveSessionId(created.id);
               await api.startSession(created.id);
-              await refresh();
+              await pollActiveState();
             }}
             onStop={async (id) => {
               await api.stopSession(id);
-              await refresh();
+              await pollActiveState();
             }}
             onModelUpload={async (model, metadata) => {
               await api.registerModel(model, metadata);
@@ -203,7 +203,7 @@ export function App() {
             }}
             onPreview={async (sourceId) => {
               await api.selectMonitor(sourceId);
-              await refresh();
+              await pollActiveState();
             }}
           />
         ) : null}

@@ -242,6 +242,7 @@ class SessionRunner:
                 raise SourceError(f"Unsupported source kind {source_record['kind']}.")
             for source_frame in source_frames:
                 if canceled.is_set():
+                    self._persist_terminal_percentiles(session_id, latencies)
                     self._finalize_artifacts(session_id, detector, monitor_writer)
                     self._finish(session_id, "canceled")
                     return
@@ -351,6 +352,7 @@ class SessionRunner:
                     result.detections,
                     record.preview_overlays,
                 )
+            self._persist_terminal_percentiles(session_id, latencies)
             self._finalize_artifacts(session_id, detector, monitor_writer)
             terminal = "canceled" if canceled.is_set() else "completed"
             self._finish(session_id, terminal)
@@ -358,12 +360,28 @@ class SessionRunner:
             message = str(exc) or type(exc).__name__
             if detector is not None:
                 try:
+                    self._persist_terminal_percentiles(session_id, latencies)
                     self._finalize_artifacts(session_id, detector, monitor_writer)
                 except Exception as finalization_error:
                     message += f" Artifact finalization also failed: {finalization_error}"
             elif monitor_writer is not None:
                 monitor_writer.close()
             self._fail_safely(session_id, message)
+
+    def _persist_terminal_percentiles(
+        self, session_id: str, latencies: deque[float]
+    ) -> None:
+        window = list(latencies)
+        if not window:
+            return
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                UPDATE sessions SET median_latency_ms = ?, p95_latency_ms = ?
+                WHERE id = ?
+                """,
+                (_percentile(window, 50), _percentile(window, 95), session_id),
+            )
 
     def _finalize_artifacts(
         self,

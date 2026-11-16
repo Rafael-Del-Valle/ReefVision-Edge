@@ -89,6 +89,35 @@ def test_recorded_session_persists_metrics_detections_and_preview(tmp_path: Path
     assert restored.jpeg == preview.jpeg
 
 
+def test_terminal_latency_percentiles_include_every_processed_frame(
+    tmp_path: Path,
+) -> None:
+    database, model, source, previews, _, _ = prepared_services(tmp_path)
+    expected_latencies = iter((1.0, 2.0, 3.0, 4.0, 100.0))
+
+    class ControlledLatencyDetector(YoloOnnxDetector):
+        def predict(self, frame):  # type: ignore[no-untyped-def]
+            return replace(
+                super().predict(frame), latency_ms=next(expected_latencies)
+            )
+
+    runner = SessionRunner(
+        database,
+        ModelRegistry(database, tmp_path / "models"),
+        MediaStore(database, tmp_path / "media"),
+        previews,
+        detector_factory=ControlledLatencyDetector,
+    )
+    service = SessionService(database, runner)
+    session = service.create(model.id, source.id)
+
+    runner.run(session.id)
+
+    completed = service.get(session.id)
+    assert completed.median_latency_ms == pytest.approx(3.0)
+    assert completed.p95_latency_ms == pytest.approx(80.8)
+
+
 def test_session_settings_keep_recording_and_overlay_controls_independent(
     tmp_path: Path,
 ) -> None:

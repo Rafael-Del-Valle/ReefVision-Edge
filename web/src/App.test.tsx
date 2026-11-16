@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { App } from "./App";
@@ -154,6 +154,84 @@ test("shows prominent model source sampling and run controls", async () => {
   expect(screen.getByRole("button", { name: "Start inference" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
   expect(screen.getByText("CPU baseline")).toBeVisible();
+});
+
+test("starting inference does not rediscover cameras", async () => {
+  installFetch();
+  const fetchMock = vi.mocked(fetch);
+  fetchMock.mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/sessions") && init?.method === "POST") {
+        return jsonResponse({ ...session, id: "session-2", status: "queued" });
+      }
+      if (url.endsWith("/api/sessions/session-2/start"))
+        return jsonResponse({});
+      if (url.endsWith("/api/models")) return jsonResponse([model]);
+      if (url.endsWith("/api/sources")) return jsonResponse([source]);
+      if (url.endsWith("/api/sessions")) return jsonResponse([session]);
+      if (url.endsWith("/api/capture-devices"))
+        return jsonResponse([
+          {
+            id: "camera:msmf:0",
+            label: "Camera 1 (Media Foundation)",
+            index: 0,
+            backend: "Media Foundation",
+            available: true,
+          },
+        ]);
+      if (url.endsWith("/api/monitor/status"))
+        return jsonResponse({
+          state: "replaying",
+          source_id: "source-1",
+          frame_index: 4,
+          detail: null,
+          updated_at: 1234.5,
+        });
+      if (url.endsWith("/api/capabilities"))
+        return jsonResponse({
+          available_providers: ["CPUExecutionProvider"],
+          camera_backend: "unavailable",
+          offline_runtime: true,
+          overlay_capabilities: {
+            timer: { supported: true, reason: null },
+            trails: { supported: false, reason: "Tracking is unavailable." },
+            boxes: { supported: true, reason: null },
+            masks: { supported: false, reason: "Masks are unavailable." },
+            labels: { supported: true, reason: null },
+          },
+        });
+      if (url.endsWith("/api/settings"))
+        return jsonResponse({
+          bind_host: "127.0.0.1",
+          bind_port: 8765,
+          data_dir: "/var/lib/reefvision-edge",
+          auth_required: false,
+        });
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  );
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Field monitor" });
+  const discoveryCallsBefore = fetchMock.mock.calls.filter(([input]) =>
+    String(input).endsWith("/api/capture-devices"),
+  ).length;
+
+  await user.click(screen.getByRole("button", { name: "Start inference" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/sessions/session-2/start"),
+      ),
+    ).toBe(true),
+  );
+
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).endsWith("/api/capture-devices"),
+    ),
+  ).toHaveLength(discoveryCallsBefore);
 });
 
 test("shows live source compute recording overlays and actual runtime metrics", async () => {

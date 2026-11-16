@@ -91,6 +91,14 @@ def non_maximum_suppression(
     return tuple(kept)
 
 
+def _session_options(enable_profiling: bool) -> ort.SessionOptions:
+    options = ort.SessionOptions()
+    options.enable_profiling = enable_profiling
+    if hasattr(ort.InferenceSession, "get_provider_graph_assignment_info"):
+        options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+    return options
+
+
 class YoloOnnxDetector:
     def __init__(
         self,
@@ -104,12 +112,7 @@ class YoloOnnxDetector:
         self._cuda_validation_pending = (
             self.compute.active_provider == "CUDAExecutionProvider"
         )
-        options = ort.SessionOptions()
-        options.enable_profiling = enable_profiling or self._cuda_validation_pending
-        if hasattr(ort.InferenceSession, "get_provider_graph_assignment_info"):
-            options.add_session_config_entry(
-                "session.record_ep_graph_assignment_info", "1"
-            )
+        options = _session_options(enable_profiling or self._cuda_validation_pending)
         try:
             self.session = ort.InferenceSession(
                 str(model.path),
@@ -125,9 +128,10 @@ class YoloOnnxDetector:
             try:
                 self.session = ort.InferenceSession(
                     str(model.path),
-                    sess_options=options,
+                    sess_options=_session_options(enable_profiling),
                     providers=list(self.compute.providers),
                 )
+                self._cuda_validation_pending = False
             except Exception as cpu_exc:
                 raise ComputeDeviceError(
                     f"CPU fallback could not initialize ONNX Runtime: {cpu_exc}"
@@ -141,12 +145,7 @@ class YoloOnnxDetector:
         if self.profile_path is not None:
             self.profile_path.unlink(missing_ok=True)
         self.compute = cpu_fallback(self.compute.requested, reason)
-        options = ort.SessionOptions()
-        options.enable_profiling = self._requested_profiling
-        if hasattr(ort.InferenceSession, "get_provider_graph_assignment_info"):
-            options.add_session_config_entry(
-                "session.record_ep_graph_assignment_info", "1"
-            )
+        options = _session_options(self._requested_profiling)
         self.session = ort.InferenceSession(
             str(self.model.path),
             sess_options=options,
