@@ -29,6 +29,7 @@ interface MonitorProps {
   sessions: SessionRecord[];
   captureDevices: CaptureDevice[];
   monitorStatus: MonitorStatus;
+  captureOwned: boolean;
   overlayCapabilities: Record<OverlayName, OverlayCapability>;
   activeSessionId: string | null;
   onActiveSession: (id: string | null) => void;
@@ -38,6 +39,7 @@ interface MonitorProps {
   onModelUpload: (model: File, metadata: File) => Promise<void>;
   onVideoUpload: (video: File) => Promise<void>;
   onCamera: (device: string) => Promise<void>;
+  onRefreshCameras: () => Promise<void>;
 }
 
 interface OverlayControlsProps {
@@ -92,6 +94,7 @@ export function Monitor({
   sessions,
   captureDevices,
   monitorStatus,
+  captureOwned,
   overlayCapabilities,
   activeSessionId,
   onActiveSession,
@@ -101,6 +104,7 @@ export function Monitor({
   onModelUpload,
   onVideoUpload,
   onCamera,
+  onRefreshCameras,
 }: MonitorProps) {
   const [modelId, setModelId] = useState("");
   const [sourceId, setSourceId] = useState("");
@@ -279,7 +283,7 @@ export function Monitor({
                   ? `${active.median_latency_ms.toFixed(1)} ms`
                   : "—"
               }
-              detail="last 4,096 frames"
+              detail="up to last 4,096 frames"
             />
             <Metric
               label="p95"
@@ -288,7 +292,7 @@ export function Monitor({
                   ? `${active.p95_latency_ms.toFixed(1)} ms`
                   : "—"
               }
-              detail="last 4,096 frames"
+              detail="up to last 4,096 frames"
             />
             <Metric
               label="Frames"
@@ -552,6 +556,16 @@ export function Monitor({
                 disabled={!selectedCamera || busy !== null}
               >
                 Connect camera
+              </button>
+              <button
+                className="secondary"
+                type="button"
+                disabled={captureOwned || busy !== null}
+                onClick={() =>
+                  void act("camera-refresh", () => onRefreshCameras())
+                }
+              >
+                {busy === "camera-refresh" ? "Refreshing…" : "Refresh cameras"}
               </button>
             </form>
           </details>

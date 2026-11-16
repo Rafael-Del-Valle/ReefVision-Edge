@@ -31,6 +31,29 @@ function upsertById<T extends { id: string }>(values: T[], value: T): T[] {
   return [value, ...values.filter((item) => item.id !== value.id)];
 }
 
+function captureIsOwned(
+  sessions: SessionRecord[],
+  sources: SourceRecord[],
+  monitorStatus: MonitorStatus,
+): boolean {
+  if (
+    ["connecting", "receiving", "stalled", "disconnected"].includes(
+      monitorStatus.state,
+    )
+  )
+    return true;
+  const cameraIds = new Set(
+    sources
+      .filter((source) => source.kind === "camera")
+      .map((source) => source.id),
+  );
+  return sessions.some(
+    (session) =>
+      ["queued", "running"].includes(session.status) &&
+      cameraIds.has(session.source_id),
+  );
+}
+
 export function App() {
   const [view, setView] = useState<View>("monitor");
   const [data, setData] = useState<StationData | null>(null);
@@ -39,23 +62,18 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [
-      models,
-      sources,
-      sessions,
-      capabilities,
-      settings,
-      captureDevices,
-      monitorStatus,
-    ] = await Promise.all([
-      api.models(),
-      api.sources(),
-      api.sessions(),
-      api.capabilities(),
-      api.settings(),
-      api.captureDevices(),
-      api.monitorStatus(),
-    ]);
+    const [models, sources, sessions, capabilities, settings, monitorStatus] =
+      await Promise.all([
+        api.models(),
+        api.sources(),
+        api.sessions(),
+        api.capabilities(),
+        api.settings(),
+        api.monitorStatus(),
+      ]);
+    const captureDevices = captureIsOwned(sessions, sources, monitorStatus)
+      ? []
+      : await api.captureDevices();
     setData({
       models,
       sources,
@@ -78,6 +96,16 @@ export function App() {
       current ? { ...current, sessions, monitorStatus } : current,
     );
   }, []);
+
+  const refreshCameras = useCallback(async () => {
+    if (
+      !data ||
+      captureIsOwned(data.sessions, data.sources, data.monitorStatus)
+    )
+      return;
+    const captureDevices = await api.captureDevices();
+    setData((current) => (current ? { ...current, captureDevices } : current));
+  }, [data]);
 
   useEffect(() => {
     let active = true;
@@ -176,6 +204,11 @@ export function App() {
             sessions={data.sessions}
             captureDevices={data.captureDevices}
             monitorStatus={data.monitorStatus}
+            captureOwned={captureIsOwned(
+              data.sessions,
+              data.sources,
+              data.monitorStatus,
+            )}
             overlayCapabilities={data.capabilities.overlay_capabilities}
             activeSessionId={activeSessionId}
             onActiveSession={setActiveSessionId}
@@ -222,6 +255,7 @@ export function App() {
                   : current,
               );
             }}
+            onRefreshCameras={refreshCameras}
             onPreview={async (sourceId) => {
               await api.selectMonitor(sourceId);
               await pollActiveState();

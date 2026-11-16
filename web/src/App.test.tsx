@@ -84,14 +84,32 @@ function jsonResponse(value: unknown): Promise<Response> {
   );
 }
 
-function installFetch(): void {
+function installFetch({
+  sessions = [session],
+  monitorStatus = {
+    state: "replaying",
+    source_id: "source-1",
+    frame_index: 4,
+    detail: null,
+    updated_at: 1234.5,
+  },
+}: {
+  sessions?: (typeof session)[];
+  monitorStatus?: {
+    state: string;
+    source_id: string | null;
+    frame_index: number | null;
+    detail: string | null;
+    updated_at: number;
+  };
+} = {}): void {
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/models")) return jsonResponse([model]);
       if (url.endsWith("/api/sources")) return jsonResponse([source]);
-      if (url.endsWith("/api/sessions")) return jsonResponse([session]);
+      if (url.endsWith("/api/sessions")) return jsonResponse(sessions);
       if (url.endsWith("/api/capture-devices"))
         return jsonResponse([
           {
@@ -103,13 +121,7 @@ function installFetch(): void {
           },
         ]);
       if (url.endsWith("/api/monitor/status"))
-        return jsonResponse({
-          state: "replaying",
-          source_id: "source-1",
-          frame_index: 4,
-          detail: null,
-          updated_at: 1234.5,
-        });
+        return jsonResponse(monitorStatus);
       if (url.endsWith("/api/capabilities"))
         return jsonResponse({
           available_providers: ["CPUExecutionProvider"],
@@ -154,6 +166,40 @@ test("shows prominent model source sampling and run controls", async () => {
   expect(screen.getByRole("button", { name: "Start inference" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
   expect(screen.getByText("CPU baseline")).toBeVisible();
+});
+
+test("does not discover cameras while a camera session owns capture", async () => {
+  installFetch({
+    sessions: [
+      {
+        ...session,
+        status: "running",
+        source_id: "camera-source-1",
+      },
+    ],
+    monitorStatus: {
+      state: "receiving",
+      source_id: "camera-source-1",
+      frame_index: 4,
+      detail: null,
+      updated_at: 1234.5,
+    },
+  });
+  const fetchMock = vi.mocked(fetch);
+
+  render(<App />);
+
+  expect(
+    await screen.findByRole("heading", { name: "Field monitor" }),
+  ).toBeVisible();
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).endsWith("/api/capture-devices"),
+    ),
+  ).toHaveLength(0);
+  expect(
+    screen.getByRole("button", { name: "Refresh cameras" }),
+  ).toBeDisabled();
 });
 
 test("starting inference does not rediscover cameras", async () => {
@@ -277,12 +323,27 @@ test("shows live source compute recording overlays and actual runtime metrics", 
   ).toBeVisible();
   expect(screen.getByText("12.5 ms")).toBeVisible();
   expect(screen.getByText("18.4 ms")).toBeVisible();
-  expect(screen.getAllByText("last 4,096 frames")).toHaveLength(2);
+  expect(screen.getAllByText("up to last 4,096 frames")).toHaveLength(2);
   expect(screen.getByLabelText("Preview masks")).toBeDisabled();
   expect(screen.getByLabelText("Recording trails")).toBeDisabled();
   expect(
     screen.getByText("The active detector does not output segmentation masks."),
   ).toBeVisible();
+
+  const fetchMock = vi.mocked(fetch);
+  const discoveryCallsBefore = fetchMock.mock.calls.filter(([input]) =>
+    String(input).endsWith("/api/capture-devices"),
+  ).length;
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: "Refresh cameras" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/api/capture-devices"),
+      ),
+    ).toHaveLength(discoveryCallsBefore + 1),
+  );
 });
 
 test("navigates among monitor sessions and settings with runtime state", async () => {
