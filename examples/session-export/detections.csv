@@ -1,0 +1,2 @@
+schema,session_id,source_id,model_id,frame_index,timestamp_ms,source_width,source_height,class_id,class_name,score,x_min,y_min,x_max,y_max
+reefvision-edge-detection/v1,00000000-0000-4000-8000-000000000001,00000000-0000-4000-8000-000000000020,00000000-0000-4000-8000-000000000010,0,0.000,160,90,0,coral,0.90000000,60.000,35.000,100.000,55.000

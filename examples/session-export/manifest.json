@@ -1,0 +1,55 @@
+{
+  "coordinate_space": "original_source_pixels_xyxy",
+  "exported_at": "2026-11-16T12:00:01Z",
+  "model": {
+    "class_map": {
+      "0": "coral"
+    },
+    "format": "ultralytics_yolo_detect_v1",
+    "id": "00000000-0000-4000-8000-000000000010",
+    "input": {
+      "height": 640,
+      "width": 640
+    },
+    "metadata_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "name": "Sample Coral Detector",
+    "provider": "CPUExecutionProvider",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "sampling": {
+    "first_frame_index": 0,
+    "sample_every": 1
+  },
+  "schema": "reefvision-edge-session/v1",
+  "session": {
+    "average_latency_ms": 12.5,
+    "completed_at": "2026-11-16T12:00:01Z",
+    "created_at": "2026-11-16T12:00:00Z",
+    "detection_count": 1,
+    "dropped_frames": 0,
+    "error_message": null,
+    "frame_count": 1,
+    "id": "00000000-0000-4000-8000-000000000001",
+    "inference_fps": 8.0,
+    "status": "completed",
+    "updated_at": "2026-11-16T12:00:01Z"
+  },
+  "source": {
+    "codec": "MJPG",
+    "container": "avi",
+    "dimensions": {
+      "height": 90,
+      "width": 160
+    },
+    "id": "00000000-0000-4000-8000-000000000020",
+    "kind": "video",
+    "name": "sample.avi",
+    "reported_fps": 10.0,
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "thresholds": {
+    "confidence": 0.5,
+    "iou": 0.45
+  },
+  "timestamp_basis": "frame_index / reported_fps"
+}
