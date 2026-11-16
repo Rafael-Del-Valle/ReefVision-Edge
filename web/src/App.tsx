@@ -36,7 +36,6 @@ function captureIsOwned(
   sources: SourceRecord[],
   monitorStatus: MonitorStatus,
 ): boolean {
-  if (monitorStatus.state === "disconnected") return false;
   if (["connecting", "receiving", "stalled"].includes(monitorStatus.state))
     return true;
   const cameraIds = new Set(
@@ -44,11 +43,16 @@ function captureIsOwned(
       .filter((source) => source.kind === "camera")
       .map((source) => source.id),
   );
-  return sessions.some(
+  const activeCameraSessions = sessions.filter(
     (session) =>
       ["queued", "running"].includes(session.status) &&
       cameraIds.has(session.source_id),
   );
+  if (monitorStatus.state === "disconnected")
+    return activeCameraSessions.some(
+      (session) => session.source_id !== monitorStatus.source_id,
+    );
+  return activeCameraSessions.length > 0;
 }
 
 export function App() {

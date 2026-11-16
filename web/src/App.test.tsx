@@ -245,6 +245,45 @@ test("allows rediscovery after a disconnected camera releases capture", async ()
   expect(screen.getByRole("button", { name: "Refresh cameras" })).toBeEnabled();
 });
 
+test("keeps discovery disabled when another camera session is active", async () => {
+  installFetch({
+    sources: [
+      source,
+      { ...source, id: "camera-a", kind: "camera", name: "Camera A" },
+      { ...source, id: "camera-b", kind: "camera", name: "Camera B" },
+    ],
+    sessions: [
+      {
+        ...session,
+        status: "running",
+        source_id: "camera-b",
+      },
+    ],
+    monitorStatus: {
+      state: "disconnected",
+      source_id: "camera-a",
+      frame_index: 4,
+      detail: "Camera A disconnected.",
+      updated_at: 1234.5,
+    },
+  });
+  const fetchMock = vi.mocked(fetch);
+
+  render(<App />);
+
+  expect(
+    await screen.findByRole("heading", { name: "Field monitor" }),
+  ).toBeVisible();
+  expect(
+    fetchMock.mock.calls.filter(([input]) =>
+      String(input).endsWith("/api/capture-devices"),
+    ),
+  ).toHaveLength(0);
+  expect(
+    screen.getByRole("button", { name: "Refresh cameras" }),
+  ).toBeDisabled();
+});
+
 test("starting inference does not rediscover cameras", async () => {
   installFetch();
   const fetchMock = vi.mocked(fetch);
