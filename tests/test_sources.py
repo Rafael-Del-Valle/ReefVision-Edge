@@ -160,3 +160,37 @@ def test_windows_camera_disconnect_releases_capture(
     with pytest.raises(SourceError, match="stopped delivering"):
         next(frames)
     assert capture.released is True
+
+
+def test_windows_camera_frames_keep_capture_index_and_elapsed_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TimedCapture:
+        reads = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def read(self):  # type: ignore[no-untyped-def]
+            self.reads += 1
+            if self.reads <= 2:
+                return True, np.full((2, 2, 3), self.reads, dtype=np.uint8)
+            return False, None
+
+        def release(self) -> None:
+            return None
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        "reefvision_edge.sources.cv2.VideoCapture", lambda *_args: TimedCapture()
+    )
+    frames = WindowsCameraSource(0, backend="dshow").frames(queue_size=2)
+
+    first = next(frames)
+    second = next(frames)
+
+    assert first.frame_index == 0
+    assert first.timestamp_ms is not None and first.timestamp_ms >= 0
+    assert second.frame_index == 1
+    assert second.timestamp_ms is not None
+    assert second.timestamp_ms > first.timestamp_ms

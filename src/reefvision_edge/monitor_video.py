@@ -100,10 +100,23 @@ class MonitorVideoWriter:
         self._writer: cv2.VideoWriter | None = None
         self._size: tuple[int, int] | None = None
         self._closed = False
+        self._timeline_origin_ms: float | None = None
+        self._next_output_ms = 0.0
 
-    def write(self, frame: NDArray[np.uint8]) -> None:
+    def write(
+        self, frame: NDArray[np.uint8], *, timestamp_ms: float | None = None
+    ) -> bool:
         if self._closed:
             raise RuntimeError("Monitor video writer is already closed.")
+        if timestamp_ms is not None:
+            if self._timeline_origin_ms is None:
+                self._timeline_origin_ms = timestamp_ms
+            relative_ms = max(0.0, timestamp_ms - self._timeline_origin_ms)
+            if relative_ms + 1e-6 < self._next_output_ms:
+                return False
+            frame_interval_ms = 1000.0 / self.fps
+            while self._next_output_ms <= relative_ms + 1e-6:
+                self._next_output_ms += frame_interval_ms
         size = (int(frame.shape[1]), int(frame.shape[0]))
         if self._writer is None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -123,6 +136,7 @@ class MonitorVideoWriter:
             raise RuntimeError("Monitor recording frame dimensions changed during the run.")
         self._writer.write(frame)
         self.frames_written += 1
+        return True
 
     def close(self) -> None:
         if self._closed:

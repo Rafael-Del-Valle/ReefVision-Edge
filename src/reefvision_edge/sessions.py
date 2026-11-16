@@ -352,7 +352,8 @@ class SessionRunner:
                             result.detections,
                             source_frame.timestamp_ms,
                             record.recording_overlays,
-                        )
+                        ),
+                        timestamp_ms=source_frame.timestamp_ms,
                     )
                 if preview_publisher is not None:
                     preview_publisher.offer(

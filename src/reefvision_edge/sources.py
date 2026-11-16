@@ -3,10 +3,11 @@ from __future__ import annotations
 import platform
 import queue
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Generic, TypeVar, cast
 
 import cv2
 import numpy as np
@@ -116,14 +117,17 @@ class RecordedVideoSource:
             capture.release()
 
 
-class NewestFrameQueue:
+T = TypeVar("T")
+
+
+class NewestFrameQueue(Generic[T]):
     def __init__(self, max_size: int = 1) -> None:
         if max_size < 1:
             raise ValueError("max_size must be at least one")
-        self._queue: queue.Queue[NDArray[np.uint8]] = queue.Queue(maxsize=max_size)
+        self._queue: queue.Queue[T] = queue.Queue(maxsize=max_size)
         self.dropped = 0
 
-    def put(self, frame: NDArray[np.uint8]) -> None:
+    def put(self, frame: T) -> None:
         try:
             self._queue.put_nowait(frame)
             return
@@ -136,7 +140,7 @@ class NewestFrameQueue:
             pass
         self._queue.put_nowait(frame)
 
-    def get(self, timeout: float | None = None) -> NDArray[np.uint8]:
+    def get(self, timeout: float | None = None) -> T:
         return self._queue.get(timeout=timeout)
 
 
@@ -157,31 +161,39 @@ class V4L2CameraSource:
         capture = cv2.VideoCapture(str(self.device), cv2.CAP_V4L2)
         if not capture.isOpened():
             raise SourceError(f"Camera device {self.device} could not be opened.")
-        latest = NewestFrameQueue(queue_size)
+        latest: NewestFrameQueue[SourceFrame] = NewestFrameQueue(queue_size)
         stopped = threading.Event()
         producer_done = threading.Event()
         failure: list[str] = []
+        started = time.perf_counter()
 
         def produce() -> None:
+            frame_index = 0
             try:
                 while not stopped.is_set():
                     readable, frame = capture.read()
                     if not readable:
                         failure.append(f"Camera device {self.device} stopped delivering frames.")
                         return
-                    latest.put(cast(NDArray[np.uint8], frame))
+                    latest.put(
+                        SourceFrame(
+                            frame_index=frame_index,
+                            timestamp_ms=(time.perf_counter() - started) * 1000,
+                            frame=cast(NDArray[np.uint8], frame),
+                        )
+                    )
+                    frame_index += 1
             finally:
                 producer_done.set()
 
         thread = threading.Thread(target=produce, name="reefvision-edge-camera", daemon=True)
         thread.start()
-        frame_index = 0
         try:
             while True:
                 if stop_event is not None and stop_event.is_set():
                     return
                 try:
-                    frame = latest.get(timeout=0.25)
+                    source_frame = latest.get(timeout=0.25)
                 except queue.Empty:
                     if producer_done.is_set():
                         raise SourceError(
@@ -189,8 +201,7 @@ class V4L2CameraSource:
                         ) from None
                     continue
                 self.dropped_frames = latest.dropped
-                yield SourceFrame(frame_index=frame_index, timestamp_ms=None, frame=frame)
-                frame_index += 1
+                yield source_frame
         finally:
             stopped.set()
             capture.release()
@@ -224,12 +235,14 @@ class WindowsCameraSource:
         if not capture.isOpened():
             capture.release()
             raise SourceError(f"Camera {self.identifier} could not be opened.")
-        latest = NewestFrameQueue(queue_size)
+        latest: NewestFrameQueue[SourceFrame] = NewestFrameQueue(queue_size)
         stopped = threading.Event()
         producer_done = threading.Event()
         failure: list[str] = []
+        started = time.perf_counter()
 
         def produce() -> None:
+            frame_index = 0
             try:
                 while not stopped.is_set():
                     readable, frame = capture.read()
@@ -238,7 +251,14 @@ class WindowsCameraSource:
                             f"Camera {self.identifier} stopped delivering frames."
                         )
                         return
-                    latest.put(cast(NDArray[np.uint8], frame))
+                    latest.put(
+                        SourceFrame(
+                            frame_index=frame_index,
+                            timestamp_ms=(time.perf_counter() - started) * 1000,
+                            frame=cast(NDArray[np.uint8], frame),
+                        )
+                    )
+                    frame_index += 1
             finally:
                 producer_done.set()
 
@@ -246,13 +266,12 @@ class WindowsCameraSource:
             target=produce, name="reefvision-edge-windows-camera", daemon=True
         )
         thread.start()
-        frame_index = 0
         try:
             while True:
                 if stop_event is not None and stop_event.is_set():
                     return
                 try:
-                    frame = latest.get(timeout=0.25)
+                    source_frame = latest.get(timeout=0.25)
                 except queue.Empty:
                     if producer_done.is_set():
                         raise SourceError(
@@ -260,8 +279,7 @@ class WindowsCameraSource:
                         ) from None
                     continue
                 self.dropped_frames = latest.dropped
-                yield SourceFrame(frame_index=frame_index, timestamp_ms=None, frame=frame)
-                frame_index += 1
+                yield source_frame
         finally:
             stopped.set()
             capture.release()

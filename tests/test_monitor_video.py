@@ -71,6 +71,29 @@ def test_monitor_video_writer_creates_playable_mp4(tmp_path: Path) -> None:
     assert decoded == 6
 
 
+def test_monitor_video_writer_paces_sixty_fps_timestamps_to_thirty_fps(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paced.mp4"
+    writer = MonitorVideoWriter(path, fps=30.0)
+    accepted = []
+    for index in range(60):
+        frame = np.full((64, 96, 3), index, dtype=np.uint8)
+        accepted.append(writer.write(frame, timestamp_ms=index * 1000 / 60))
+    writer.close()
+
+    capture = cv2.VideoCapture(str(path))
+    try:
+        decoded = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = capture.get(cv2.CAP_PROP_FPS)
+    finally:
+        capture.release()
+    assert sum(accepted) == 30
+    assert decoded == 30
+    assert fps == pytest.approx(30.0)
+    assert decoded / fps == pytest.approx(1.0)
+
+
 def test_monitor_video_writer_reports_encoder_open_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
