@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { FrameSurface, type FrameTelemetry } from "../components/FrameSurface";
 import { Metric } from "../components/Metric";
 import { StatusBadge } from "../components/StatusBadge";
 import type {
@@ -119,6 +120,9 @@ export function Monitor({
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cameraDevice, setCameraDevice] = useState("");
+  const [frameTelemetry, setFrameTelemetry] = useState<FrameTelemetry | null>(
+    null,
+  );
 
   const selectedModel = modelId || models[0]?.id || "";
   const selectedSource = sourceId || sources[0]?.id || "";
@@ -142,6 +146,24 @@ export function Monitor({
     models.find((item) => item.id === selectedModel)?.provider;
   const running = active?.status === "running" || active?.status === "queued";
   const sourcePreview = monitorStatus.frame_index >= 0;
+  const frameEndpoint = sourcePreview
+    ? "/api/monitor/frame"
+    : active && active.frame_count > 0
+      ? `/api/previews/${active.id}`
+      : null;
+  const frameStreamKey = sourcePreview
+    ? `monitor:${monitorStatus.source_id ?? "unknown"}`
+    : active
+      ? `session:${active.id}`
+      : "idle";
+  const frameLabel = sourcePreview
+    ? "Live source preview"
+    : "Latest inference frame with detection overlays";
+  const updateFrameTelemetry = useCallback(
+    (value: FrameTelemetry) => setFrameTelemetry(value),
+    [],
+  );
+  useEffect(() => setFrameTelemetry(null), [frameStreamKey]);
 
   async function act(name: string, action: () => Promise<void>) {
     setBusy(name);
@@ -249,16 +271,13 @@ export function Monitor({
             )}
           </div>
           <div className="preview-stage">
-            {sourcePreview ? (
-              <img
-                src={`/api/monitor/frame?v=${encodeURIComponent(monitorStatus.updated_at)}`}
-                alt="Live source preview"
-              />
-            ) : active && active.frame_count > 0 ? (
-              <img
-                key={`${active.id}-${active.updated_at}`}
-                src={`/api/previews/${active.id}?v=${encodeURIComponent(active.updated_at)}`}
-                alt="Latest inference frame with detection overlays"
+            {frameEndpoint ? (
+              <FrameSurface
+                endpoint={frameEndpoint}
+                streamKey={frameStreamKey}
+                label={frameLabel}
+                targetFps={30}
+                onTelemetry={updateFrameTelemetry}
               />
             ) : (
               <div className="preview-empty">
@@ -280,6 +299,22 @@ export function Monitor({
               value={
                 active?.inference_fps
                   ? `${active.inference_fps.toFixed(1)} FPS`
+                  : "—"
+              }
+            />
+            <Metric
+              label="Display"
+              value={
+                frameTelemetry
+                  ? `${frameTelemetry.displayedFps.toFixed(1)} FPS`
+                  : "—"
+              }
+            />
+            <Metric
+              label="Frame age"
+              value={
+                frameTelemetry?.frameAgeMs != null
+                  ? `${frameTelemetry.frameAgeMs.toFixed(0)} ms`
                   : "—"
               }
             />

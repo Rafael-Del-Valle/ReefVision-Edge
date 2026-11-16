@@ -150,6 +150,17 @@ function installFetch({
           data_dir: "/var/lib/reefvision-edge",
           auth_required: false,
         });
+      if (url.endsWith("/api/monitor/frame") || url.includes("/api/previews/"))
+        return Promise.resolve(
+          new Response(new Blob(["frame"], { type: "image/jpeg" }), {
+            status: 200,
+            headers: {
+              "Content-Type": "image/jpeg",
+              "X-Frame-Index": "4",
+              "X-Frame-Published-At": String(Date.now() / 1000),
+            },
+          }),
+        );
       throw new Error(`Unexpected request: ${url}`);
     }),
   );
@@ -395,7 +406,9 @@ test("shows live source compute recording overlays and actual runtime metrics", 
   expect(screen.getByLabelText("Record monitor")).not.toBeChecked();
   expect(
     screen.getByRole("img", { name: "Live source preview" }),
-  ).toHaveAttribute("src", expect.stringContaining("/api/monitor/frame"));
+  ).toHaveProperty("tagName", "CANVAS");
+  expect(screen.getByText("Display")).toBeVisible();
+  expect(screen.getByText("Frame age")).toBeVisible();
   expect(screen.getAllByText("Replay preview").length).toBeGreaterThan(0);
   expect(screen.getByLabelText("Camera device")).toHaveDisplayValue(
     "Camera 1 (Media Foundation)",
