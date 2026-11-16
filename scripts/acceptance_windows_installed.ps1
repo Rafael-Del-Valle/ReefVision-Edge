@@ -15,6 +15,7 @@ $workRoot = Join-Path $repoRoot ".artifacts\windows-msi"
 $acceptanceRoot = Join-Path $workRoot "installed-acceptance"
 $installRoot = Join-Path $env:LOCALAPPDATA "Programs\ReefVision-Edge"
 $expectedBackend = Join-Path $installRoot "backend\reefvision-edge-backend\reefvision-edge-backend.exe"
+$runToken = [Guid]::NewGuid().ToString("N")
 
 $resolvedAcceptance = [System.IO.Path]::GetFullPath($acceptanceRoot)
 $resolvedWork = [System.IO.Path]::GetFullPath($workRoot)
@@ -45,11 +46,12 @@ from tests.fixtures.build_tiny_model import build_tiny_yolo_model
 from tests.fixtures.build_video import build_mjpeg_video
 
 root = Path(sys.argv[1])
+run_token = sys.argv[2]
 root.mkdir(parents=True, exist_ok=True)
 build_tiny_yolo_model(root / "tiny.onnx")
 build_mjpeg_video(root / "recorded.avi")
 metadata = {
-    "name": "Installed ReefVision-Edge Smoke Model",
+    "name": f"Installed ReefVision-Edge Smoke Model {run_token}",
     "format": "ultralytics_yolo_detect_v1",
     "input_width": 640,
     "input_height": 640,
@@ -62,33 +64,29 @@ metadata = {
 (root / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
 '@
 $sourcePython = Join-Path $repoRoot ".venv\Scripts\python.exe"
-& $sourcePython -c $fixtureBuilder $acceptanceRoot
+& $sourcePython -c $fixtureBuilder $acceptanceRoot $runToken
 if ($LASTEXITCODE -ne 0) { throw "Could not create deterministic acceptance fixtures." }
 
 $modelPath = Join-Path $acceptanceRoot "tiny.onnx"
 $metadataPath = Join-Path $acceptanceRoot "metadata.json"
 $videoPath = Join-Path $acceptanceRoot "recorded.avi"
+$modelSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $modelPath).Hash.ToLowerInvariant()
+$videoSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $videoPath).Hash.ToLowerInvariant()
+$existingModelIds = @((Invoke-RestMethod -Uri "$BaseUrl/api/models") | ForEach-Object id)
+$existingSourceIds = @((Invoke-RestMethod -Uri "$BaseUrl/api/sources") | ForEach-Object id)
 
-try {
-    $model = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/models" -Form @{
-        model = Get-Item -LiteralPath $modelPath
-        metadata_json = Get-Content -Raw -LiteralPath $metadataPath
-    }
+$model = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/models" -Form @{
+    model = Get-Item -LiteralPath $modelPath
+    metadata_json = Get-Content -Raw -LiteralPath $metadataPath
 }
-catch {
-    $model = Invoke-RestMethod -Uri "$BaseUrl/api/models" | Where-Object name -eq "Installed ReefVision-Edge Smoke Model" | Select-Object -First 1
-    if ($null -eq $model) { throw }
-}
+Assert-That (-not ($existingModelIds -contains $model.id)) "Model upload reused an existing registration."
+Assert-That ($model.model_sha256 -eq $modelSha256) "Installed model upload returned the wrong hash."
 
-try {
-    $source = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sources/video" -Form @{
-        video = Get-Item -LiteralPath $videoPath
-    }
+$source = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sources/video" -Form @{
+    video = Get-Item -LiteralPath $videoPath
 }
-catch {
-    $source = Invoke-RestMethod -Uri "$BaseUrl/api/sources" | Where-Object name -eq "recorded.avi" | Select-Object -First 1
-    if ($null -eq $source) { throw }
-}
+Assert-That (-not ($existingSourceIds -contains $source.id)) "Video upload reused an existing source."
+Assert-That ($source.sha256 -eq $videoSha256) "Installed video upload returned the wrong hash."
 
 $session = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/sessions" `
     -ContentType "application/json" `
@@ -137,6 +135,10 @@ $result = [ordered]@{
     service_executable = $backendProcess.ExecutablePath
     bind_address = $listener.LocalAddress
     data_directory = Join-Path $env:LOCALAPPDATA "ReefVision-Edge"
+    model_id = $model.id
+    model_sha256 = $model.model_sha256
+    source_id = $source.id
+    source_sha256 = $source.sha256
     session_id = $session.id
     status = $session.status
     frame_count = $session.frame_count

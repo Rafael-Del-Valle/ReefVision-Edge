@@ -37,14 +37,17 @@ Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` lo
 
 ## Installed Windows MSI acceptance
 
-- Package: `C:\Users\rafae\Downloads\ReefVision-Edge-0.1.0-windows-x64.msi` (286,821,102 bytes).
-- Installed product: `ReefVision-Edge` version `0.1.0`, publisher `ReefVision`, product code `{E25E3CEB-F648-426C-8997-9CF3BEA90543}`.
+- Package: `C:\Users\rafae\Downloads\ReefVision-Edge-0.1.0-windows-x64.msi` (286,833,390 bytes), SHA-256 `DD958390200A81012A8DCACDA6CB5A834750790DDDA7A4F6197391B712D261CF`.
+- Installed product: `ReefVision-Edge` version `0.1.0`, publisher `ReefVision`, product code `{14B14561-3052-42F7-8C46-D593E91FCD0D}`.
 - Independent identity: upgrade code `{C2F68AF2-90BF-4CD5-982C-42987B44F5E0}`; the reference ReefVision MSI uses `{5EDA8EE0-2A5D-5B08-A8DF-9BECFC3A4351}`.
 - Application: `%LOCALAPPDATA%\Programs\ReefVision-Edge\ReefVision-Edge.exe`; service payload: `backend\reefvision-edge-backend\reefvision-edge-backend.exe`.
 - Data: `%LOCALAPPDATA%\ReefVision-Edge`; Start-menu shortcut: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\ReefVision-Edge\ReefVision-Edge.lnk`.
 - Start-menu launch visibly opened the ReefVision-themed dashboard without a terminal. The running service executable resolved to the installed backend and listened only on `127.0.0.1:8765`.
-- Deterministic installed inference completed session `88c07f22-5dbc-4015-8298-987dd9a4512d`: 3 sampled frames, 6 detections, `CPUExecutionProvider`, persisted preview, and a validated `reefvision-edge-session/v1` ZIP containing `manifest.json` and `detections.csv`.
+- Deterministic installed inference completed session `c71405dc-23f2-4c5f-86ea-ec561f89d44f`: a newly uploaded model and video produced 3 sampled frames, 6 detections, `CPUExecutionProvider`, a persisted preview, and a validated `reefvision-edge-session/v1` ZIP containing `manifest.json` and `detections.csv`. The acceptance script rejects reused registration/source IDs and verifies both uploaded SHA-256 values.
 - The launcher was closed, the checkout's `src` directory was moved out of reach, and the same Start-menu shortcut relaunched successfully. Health still reported ReefVision-Edge `0.1.0` from the installed backend; the checkout was then restored.
+- A quiet uninstall/reinstall isolation cycle preserved temporary ReefVision file and registry sentinels plus the ReefVision-Edge per-user data marker, removed the Edge executable/shortcut/Installed Apps registration, and then restored the final installed product.
+- Forced termination of the launcher closed its Windows Job Object and terminated the backend. Relaunch from the Start shortcut again returned the expected product/version from the installed executable on `127.0.0.1`.
+- The embedded offline WebView2 payload is now an explicit build input pinned to SHA-256 `D3CBE8FEDB104282D745FFF106993EFEAD51AE94F5595A4E75804446A974F9C3`; a missing or different payload stops the build.
 - Windows Installed Apps visibly showed `ReefVision-Edge` version `0.1.0` as its own entry. The original ReefVision product was not installed on this host, so the search correctly showed only the Edge entry; simultaneous listing could not be observed, while the distinct product/upgrade codes, install directory, shortcut folder, and data directory were verified.
 - File Explorer was left open to Downloads with the final MSI selected.
 

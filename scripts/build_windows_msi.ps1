@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [switch]$BackendOnly
+    [switch]$BackendOnly,
+    [Parameter(Mandatory = $true)]
+    [string]$WebView2Installer
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +24,7 @@ $wixSource = Join-Path $repoRoot "packaging\windows\wix\main.wxs"
 $wixBackendSource = Join-Path $workRoot "backend-payload.wxs"
 $launcherTarget = Join-Path $repoRoot "packaging\windows\launcher\target\release\reefvision-edge-launcher.exe"
 $launcherStage = Join-Path $stageRoot "ReefVision-Edge.exe"
-$webViewInstaller = Join-Path $env:USERPROFILE ".codex\worktrees\reefvision-1-3-release\ReefVision\apps\web\src-tauri\target\x86_64-pc-windows-msvc\release\wix\x64\x64\52cfd0a8-f256-48d4-9b18-467f2b3cda78\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
+$expectedWebView2Sha256 = "D3CBE8FEDB104282D745FFF106993EFEAD51AE94F5595A4E75804446A974F9C3"
 $downloadsMsi = Join-Path $env:USERPROFILE "Downloads\ReefVision-Edge-0.1.0-windows-x64.msi"
 
 function Clear-BuildDirectory([string]$Path) {
@@ -95,8 +97,12 @@ try {
             throw "Required WiX tool is missing: $(Join-Path $wixTools $tool)"
         }
     }
-    if (-not (Test-Path -LiteralPath $webViewInstaller)) {
-        throw "The original ReefVision offline WebView2 installer is missing: $webViewInstaller"
+    if (-not (Test-Path -LiteralPath $WebView2Installer)) {
+        throw "The supplied offline WebView2 installer is missing: $WebView2Installer"
+    }
+    $webView2Sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $WebView2Installer).Hash
+    if ($webView2Sha256 -ne $expectedWebView2Sha256) {
+        throw "WebView2 installer checksum mismatch. Expected $expectedWebView2Sha256, got $webView2Sha256."
     }
 
     & cargo build --release --manifest-path (Join-Path $repoRoot "packaging\windows\launcher\Cargo.toml")
@@ -124,7 +130,7 @@ try {
         "-dLauncherSource=$launcherStage",
         "-dBackendSource=$(Join-Path $stageRoot 'backend')",
         "-dIconSource=$(Join-Path $repoRoot 'packaging\windows\launcher\icons\icon.ico')",
-        "-dWebView2Installer=$webViewInstaller",
+        "-dWebView2Installer=$WebView2Installer",
         "-out", ($wixObjectRoot + [System.IO.Path]::DirectorySeparatorChar),
         $wixSource,
         $wixBackendSource

@@ -49,29 +49,29 @@ def test_packaged_backend_runs_without_source_checkout(tmp_path: Path) -> None:
     assert source.is_dir()
     assert not disabled_source.exists()
     source.rename(disabled_source)
-
-    port = _free_loopback_port()
-    data_dir = tmp_path / "data"
-    environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
-    environment.pop("PYTHONHOME", None)
-    process = subprocess.Popen(
-        [
-            str(PACKAGED_EXE),
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--data-dir",
-            str(data_dir),
-        ],
-        cwd=tmp_path,
-        env=environment,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
+    process: subprocess.Popen[bytes] | None = None
     try:
+        port = _free_loopback_port()
+        data_dir = tmp_path / "data"
+        environment = os.environ.copy()
+        environment.pop("PYTHONPATH", None)
+        environment.pop("PYTHONHOME", None)
+        process = subprocess.Popen(
+            [
+                str(PACKAGED_EXE),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--data-dir",
+                str(data_dir),
+            ],
+            cwd=tmp_path,
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
         deadline = time.monotonic() + 30
         health_payload: dict[str, str] | None = None
         dashboard = ""
@@ -94,10 +94,12 @@ def test_packaged_backend_runs_without_source_checkout(tmp_path: Path) -> None:
         assert "ReefVision-Edge" in dashboard
         assert data_dir.joinpath("reefvision-edge.sqlite3").is_file()
     finally:
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=10)
-        disabled_source.rename(source)
+        if process is not None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
+        if disabled_source.exists():
+            disabled_source.rename(source)

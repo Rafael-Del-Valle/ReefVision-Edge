@@ -4,7 +4,22 @@ import os
 import sys
 from pathlib import Path
 
-from reefvision_edge.cli import main
+import uvicorn
+
+from reefvision_edge.app import create_app
+from reefvision_edge.cli import settings_from_argv
+
+
+def main() -> None:
+    settings = settings_from_argv()
+    if settings.bind_host != "127.0.0.1":
+        raise SystemExit("The packaged desktop backend only accepts --host 127.0.0.1.")
+    uvicorn.run(
+        create_app(settings),
+        host=settings.bind_host,
+        port=settings.bind_port,
+        log_level="info",
+    )
 
 if __name__ == "__main__":
     log_file = os.environ.get("REEFVISION_EDGE_LOG_FILE")

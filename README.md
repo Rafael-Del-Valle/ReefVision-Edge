@@ -161,10 +161,11 @@ Jetson acceleration wheels are JetPack-specific and are not bundled or claimed b
 The Windows x64 MSI installs a self-contained desktop build for the current user. It includes the local Python service, dashboard assets, native inference dependencies, a WebView launcher, and a Start-menu shortcut; the installed app does not use the source checkout, a development server, or runtime downloads.
 
 ```powershell
-.\scripts\build_windows_msi.ps1
+.\scripts\build_windows_msi.ps1 `
+  -WebView2Installer C:\path\to\MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 ```
 
-The build verifies the checked-in offline bundle, stages the frozen backend, runs source-independent smoke tests, and writes `ReefVision-Edge-0.1.0-windows-x64.msi` to the current user's Downloads folder. The installed layout is intentionally separate from ReefVision:
+The WebView2 argument is an explicit offline packaging input. The build accepts only the reference payload used by ReefVision, SHA-256 `D3CBE8FEDB104282D745FFF106993EFEAD51AE94F5595A4E75804446A974F9C3`, and rejects any missing or different executable before WiX runs. The build also verifies the checked-in offline bundle, stages the frozen backend, runs source-independent smoke tests, and writes `ReefVision-Edge-0.1.0-windows-x64.msi` to the current user's Downloads folder. The installed layout is intentionally separate from ReefVision:
 
 ```text
 %LOCALAPPDATA%\Programs\ReefVision-Edge\  application and frozen backend
@@ -173,6 +174,8 @@ The build verifies the checked-in offline bundle, stages the frozen backend, run
 ```
 
 The Start-menu launcher owns the packaged service, binds it to `127.0.0.1:8765`, opens the local dashboard in its own window, and stops the child service when that window closes. Run `.\scripts\acceptance_windows_installed.ps1` after installation to exercise deterministic recorded-video inference, preview retrieval, and export validation against the installed executable.
+
+For release qualification, `.\scripts\acceptance_windows_uninstall_isolation.ps1` performs a quiet uninstall/reinstall cycle. It verifies that ReefVision file and registry sentinels and the ReefVision-Edge per-user data directory survive Edge removal, then leaves ReefVision-Edge installed.
 
 ## Verification
 
