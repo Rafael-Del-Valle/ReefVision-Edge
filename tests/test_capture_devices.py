@@ -11,11 +11,19 @@ def test_windows_discovery_prefers_media_foundation_and_releases_probes(
     captures: list[FakeCapture] = []
 
     class FakeCapture:
-        def __init__(self, index: int, backend: int) -> None:
-            self.index = index
-            self.backend = backend
+        def __init__(self) -> None:
+            self.index = -1
+            self.backend = -1
             self.released = False
             captures.append(self)
+
+        def set(self, _property: int, _value: float) -> bool:
+            return True
+
+        def open(self, index: int, backend: int) -> bool:
+            self.index = index
+            self.backend = backend
+            return self.index == 0
 
         def isOpened(self) -> bool:
             return self.index == 0

@@ -27,8 +27,11 @@ def discover_capture_devices(max_devices: int = 8) -> list[CaptureDevice]:
     devices: list[CaptureDevice] = []
     for index in range(max_devices):
         for backend_id, backend_name, backend_value in backends:
-            capture = cv2.VideoCapture(index, backend_value)
+            capture = cv2.VideoCapture()
             try:
+                capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 500)
+                capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 500)
+                capture.open(index, backend_value)
                 readable, _ = capture.read() if capture.isOpened() else (False, None)
                 if not readable:
                     continue

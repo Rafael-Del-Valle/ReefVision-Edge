@@ -13,6 +13,18 @@ from reefvision_edge.cli import settings_from_argv
 from reefvision_edge.compute import preload_nvidia_runtime
 
 
+def build_identity() -> dict[str, str]:
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    path = root / "build-identity.json"
+    if not path.is_file():
+        return {"build_commit": "development", "runtime_profile": "development"}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        "build_commit": str(value.get("build_commit", "unknown")),
+        "runtime_profile": str(value.get("runtime_profile", "unknown")),
+    }
+
+
 def runtime_diagnostics() -> dict[str, object]:
     preload_status = "unavailable"
     preload_error: str | None = None
@@ -24,6 +36,7 @@ def runtime_diagnostics() -> dict[str, object]:
         preload_status = "failed"
         preload_error = str(exc)
     return {
+        **build_identity(),
         "onnxruntime_version": ort.__version__,
         "available_providers": ort.get_available_providers(),
         "nvidia_runtime_preload": preload_status,

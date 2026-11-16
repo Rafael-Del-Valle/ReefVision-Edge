@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -144,3 +145,148 @@ def test_explicit_nvidia_detector_does_not_fall_back_when_session_creation_fails
 
     with pytest.raises(ComputeDeviceError, match=r"cudnn64_9\.dll"):
         YoloOnnxDetector(registered, ComputeChoice.NVIDIA_GPU)
+
+
+def test_explicit_nvidia_rejects_a_session_with_zero_cuda_operators(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_path = build_tiny_yolo_model(tmp_path / "tiny.onnx")
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    registered = ModelRegistry(database, tmp_path / "models").register(
+        io.BytesIO(model_path.read_bytes()), "tiny.onnx", valid_metadata()
+    )
+    resolution_type = __import__(
+        "reefvision_edge.compute", fromlist=["ComputeResolution"]
+    ).ComputeResolution
+    monkeypatch.setattr(
+        "reefvision_edge.inference.resolve_compute",
+        lambda _choice: resolution_type(
+            requested=ComputeChoice.NVIDIA_GPU,
+            providers=("CUDAExecutionProvider", "CPUExecutionProvider"),
+            active_provider="CUDAExecutionProvider",
+            actual_device="NVIDIA GeForce RTX 3090",
+            explanation="NVIDIA GPU was selected explicitly.",
+            fell_back=False,
+        ),
+    )
+
+    class Input:
+        name = "images"
+
+    class CpuOnlySession:
+        def __init__(self, *_args: object, sess_options, **_kwargs: object) -> None:
+            self.options = sess_options
+
+        def get_inputs(self) -> list[Input]:
+            return [Input()]
+
+        def get_providers(self) -> list[str]:
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+        def get_session_options(self):  # type: ignore[no-untyped-def]
+            return self.options
+
+        def run(self, *_args: object, **_kwargs: object) -> list[np.ndarray]:
+            return [np.zeros((1, 6, 1), dtype=np.float32)]
+
+        def end_profiling(self) -> str:
+            target = tmp_path / "cpu-only-profile.json"
+            target.write_text(
+                json.dumps(
+                    [
+                        {
+                            "cat": "Node",
+                            "args": {
+                                "provider": "CPUExecutionProvider",
+                                "op_name": "Gemm",
+                            },
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            return str(target)
+
+    monkeypatch.setattr("reefvision_edge.inference.ort.InferenceSession", CpuOnlySession)
+    detector = YoloOnnxDetector(registered, ComputeChoice.NVIDIA_GPU)
+
+    with pytest.raises(ComputeDeviceError, match="executed zero operators"):
+        detector.predict(np.zeros((90, 160, 3), dtype=np.uint8))
+
+
+def test_auto_falls_back_to_cpu_when_cuda_executes_zero_operators(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_path = build_tiny_yolo_model(tmp_path / "tiny.onnx")
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    registered = ModelRegistry(database, tmp_path / "models").register(
+        io.BytesIO(model_path.read_bytes()), "tiny.onnx", valid_metadata()
+    )
+    resolution_type = __import__(
+        "reefvision_edge.compute", fromlist=["ComputeResolution"]
+    ).ComputeResolution
+    monkeypatch.setattr(
+        "reefvision_edge.inference.resolve_compute",
+        lambda _choice: resolution_type(
+            requested=ComputeChoice.AUTO,
+            providers=("CUDAExecutionProvider", "CPUExecutionProvider"),
+            active_provider="CUDAExecutionProvider",
+            actual_device="NVIDIA GeForce RTX 3090",
+            explanation="Auto selected CUDA.",
+            fell_back=False,
+        ),
+    )
+
+    class Input:
+        name = "images"
+
+    class Session:
+        instances = 0
+
+        def __init__(self, *_args: object, sess_options, providers, **_kwargs: object) -> None:
+            self.options = sess_options
+            self.providers = providers
+            Session.instances += 1
+
+        def get_inputs(self) -> list[Input]:
+            return [Input()]
+
+        def get_providers(self) -> list[str]:
+            return list(self.providers)
+
+        def get_session_options(self):  # type: ignore[no-untyped-def]
+            return self.options
+
+        def run(self, *_args: object, **_kwargs: object) -> list[np.ndarray]:
+            return [np.zeros((1, 6, 1), dtype=np.float32)]
+
+        def end_profiling(self) -> str:
+            target = tmp_path / "auto-cpu-profile.json"
+            target.write_text(
+                json.dumps(
+                    [
+                        {
+                            "cat": "Node",
+                            "args": {
+                                "provider": "CPUExecutionProvider",
+                                "op_name": "Gemm",
+                            },
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            return str(target)
+
+    monkeypatch.setattr("reefvision_edge.inference.ort.InferenceSession", Session)
+    detector = YoloOnnxDetector(registered, ComputeChoice.AUTO)
+
+    detector.predict(np.zeros((90, 160, 3), dtype=np.uint8))
+
+    assert Session.instances == 2
+    assert detector.resolution.active_provider == "CPUExecutionProvider"
+    assert detector.resolution.actual_device == "CPU"
+    assert detector.resolution.fell_back is True
+    assert "executed zero operators" in detector.resolution.explanation

@@ -221,7 +221,7 @@ def create_api_router(
             return asdict(sessions.start(session_id))
         except KeyError:
             return error_response(404, "session_not_found", "Session was not found.")
-        except (ValueError, RuntimeError) as exc:
+        except (ValueError, RuntimeError, SourceError) as exc:
             return error_response(409, "invalid_state", str(exc))
 
     @router.post(

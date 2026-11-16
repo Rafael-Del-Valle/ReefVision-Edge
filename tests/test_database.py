@@ -111,3 +111,36 @@ def test_restart_marks_stale_running_sessions_interrupted(tmp_path: Path) -> Non
         ).fetchone()
     assert recovered == 1
     assert row == ("interrupted", "Service restarted before the session completed.")
+
+
+def test_restart_preserves_aggregate_progress_when_data_recording_is_disabled(
+    tmp_path: Path,
+) -> None:
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    with database.connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO sessions (
+                id, model_id, source_id, status, settings_json, frame_count,
+                detection_count, average_latency_ms, created_at, updated_at
+            ) VALUES (?, ?, ?, 'running', ?, 17, 31, 2.5, ?, ?)
+            """,
+            (
+                "no-data",
+                "model",
+                "source",
+                '{"record_data":false}',
+                "2026-11-16T12:00:00Z",
+                "2026-11-16T12:00:00Z",
+            ),
+        )
+
+    database.recover_interrupted_sessions()
+
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT frame_count, detection_count, average_latency_ms FROM sessions "
+            "WHERE id = 'no-data'"
+        ).fetchone()
+    assert row == (17, 31, 2.5)

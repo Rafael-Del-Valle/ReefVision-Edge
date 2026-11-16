@@ -339,18 +339,13 @@ def main() -> None:
             raise AssertionError("Sustained frames.csv is missing required data fields.")
         if not sustained_export["detection_rows"]:
             raise AssertionError("Sustained detections.csv is empty.")
-        if sustained.get("peak_vram_mb") is None:
-            raise AssertionError("Sustained GPU session did not record peak VRAM.")
         capture_devices = _request(client, "GET", "/api/capture-devices")
 
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    bundle_metadata = json.loads(
+        (arguments.bundle_path / "BUNDLE-METADATA.json").read_text(encoding="utf-8")
+    )
     report = {
-        "tested_commit": commit,
+        "tested_commit": bundle_metadata["commit"],
         "bundle_path": str(arguments.bundle_path.resolve()),
         "driver": _driver_info(),
         "gpu_checks": {
@@ -388,7 +383,11 @@ def main() -> None:
             "p95_latency_ms": sustained["p95_latency_ms"],
             "dropped_frames": sustained["dropped_frames"],
             "peak_vram_mb": sustained["peak_vram_mb"],
-            "vram_measurement": "nvidia-smi memory.used total fallback under WDDM",
+            "vram_measurement": (
+                "process nvidia-smi used_gpu_memory"
+                if sustained["peak_vram_mb"] is not None
+                else "unavailable: Windows WDDM reported per-process memory as N/A"
+            ),
             "frame_count": sustained["frame_count"],
             "detection_count": sustained["detection_count"],
             "video_decode": sustained_decode,

@@ -154,18 +154,22 @@ class Database:
                 """
                 UPDATE sessions
                 SET status = 'interrupted',
-                    frame_count = (
-                        SELECT COUNT(*) FROM frames WHERE frames.session_id = sessions.id
-                    ),
-                    detection_count = (
-                        SELECT COUNT(*) FROM detections
-                        JOIN frames ON frames.id = detections.frame_id
-                        WHERE frames.session_id = sessions.id
-                    ),
-                    average_latency_ms = (
-                        SELECT AVG(latency_ms) FROM frames
-                        WHERE frames.session_id = sessions.id
-                    ),
+                    frame_count = CASE
+                        WHEN COALESCE(json_extract(settings_json, '$.record_data'), 1) = 1
+                        THEN (SELECT COUNT(*) FROM frames
+                              WHERE frames.session_id = sessions.id)
+                        ELSE frame_count END,
+                    detection_count = CASE
+                        WHEN COALESCE(json_extract(settings_json, '$.record_data'), 1) = 1
+                        THEN (SELECT COUNT(*) FROM detections
+                              JOIN frames ON frames.id = detections.frame_id
+                              WHERE frames.session_id = sessions.id)
+                        ELSE detection_count END,
+                    average_latency_ms = CASE
+                        WHEN COALESCE(json_extract(settings_json, '$.record_data'), 1) = 1
+                        THEN (SELECT AVG(latency_ms) FROM frames
+                              WHERE frames.session_id = sessions.id)
+                        ELSE average_latency_ms END,
                     error_message = 'Service restarted before the session completed.',
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

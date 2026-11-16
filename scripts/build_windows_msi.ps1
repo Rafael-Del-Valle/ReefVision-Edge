@@ -97,9 +97,27 @@ try {
         --require-hashes --requirement $runtimeLock
     if ($LASTEXITCODE -ne 0) { throw "Could not install the pinned offline inference runtime." }
 
-    & $buildPython -m PyInstaller --noconfirm --clean `
-        --distpath $backendDist --workpath $backendWork $spec
-    if ($LASTEXITCODE -ne 0) { throw "PyInstaller backend build failed." }
+    $previousBuildCommit = $env:REEFVISION_EDGE_BUILD_COMMIT
+    $previousRuntimeProfile = $env:REEFVISION_EDGE_RUNTIME_PROFILE
+    try {
+        $env:REEFVISION_EDGE_BUILD_COMMIT = $bundleMetadata.commit
+        $env:REEFVISION_EDGE_RUNTIME_PROFILE = $bundleMetadata.runtime_profile
+        & $buildPython -m PyInstaller --noconfirm --clean `
+            --distpath $backendDist --workpath $backendWork $spec
+        if ($LASTEXITCODE -ne 0) { throw "PyInstaller backend build failed." }
+    }
+    finally {
+        if ($null -eq $previousBuildCommit) {
+            Remove-Item Env:REEFVISION_EDGE_BUILD_COMMIT -ErrorAction SilentlyContinue
+        } else {
+            $env:REEFVISION_EDGE_BUILD_COMMIT = $previousBuildCommit
+        }
+        if ($null -eq $previousRuntimeProfile) {
+            Remove-Item Env:REEFVISION_EDGE_RUNTIME_PROFILE -ErrorAction SilentlyContinue
+        } else {
+            $env:REEFVISION_EDGE_RUNTIME_PROFILE = $previousRuntimeProfile
+        }
+    }
 
     $backendExe = Join-Path $backendDist "reefvision-edge-backend\reefvision-edge-backend.exe"
     if (-not (Test-Path -LiteralPath $backendExe)) {

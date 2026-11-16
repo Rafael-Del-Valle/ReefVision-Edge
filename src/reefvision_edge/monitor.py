@@ -61,6 +61,11 @@ class MonitorPreviewService:
         stop.set()
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=3)
+            if thread.is_alive():
+                raise SourceError(
+                    "The previous source did not release within 3 seconds; "
+                    "a second capture owner was not started."
+                )
         with self._lock:
             self._thread = None
             self._frame = None

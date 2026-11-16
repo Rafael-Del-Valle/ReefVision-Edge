@@ -64,3 +64,24 @@ def test_monitor_reports_missing_selection_and_releases_for_inference(tmp_path: 
     with pytest.raises(KeyError):
         monitor.jpeg()
     monitor.shutdown()
+
+
+def test_monitor_refuses_second_owner_when_previous_worker_does_not_stop(
+    tmp_path: Path,
+) -> None:
+    store, _ = _store(tmp_path)
+    monitor = MonitorPreviewService(store)
+
+    class StuckThread:
+        def join(self, timeout: float) -> None:
+            assert timeout == 3
+
+        def is_alive(self) -> bool:
+            return True
+
+    monitor._thread = StuckThread()  # type: ignore[assignment]
+
+    with pytest.raises(SourceError, match="second capture owner was not started"):
+        monitor.stop()
+
+    assert monitor._thread is not None

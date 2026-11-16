@@ -65,6 +65,16 @@ export function App() {
     setError(null);
   }, []);
 
+  const pollActiveState = useCallback(async () => {
+    const [sessions, monitorStatus] = await Promise.all([
+      api.sessions(),
+      api.monitorStatus(),
+    ]);
+    setData((current) =>
+      current ? { ...current, sessions, monitorStatus } : current,
+    );
+  }, []);
+
   useEffect(() => {
     let active = true;
     void load().catch((reason: unknown) => {
@@ -87,11 +97,11 @@ export function App() {
     )
       return;
     const timer = window.setInterval(
-      () => void load().catch(() => undefined),
+      () => void pollActiveState().catch(() => undefined),
       500,
     );
     return () => window.clearInterval(timer);
-  }, [data?.sessions, load]);
+  }, [data?.sessions, data?.monitorStatus.state, pollActiveState]);
 
   async function refresh() {
     await load();

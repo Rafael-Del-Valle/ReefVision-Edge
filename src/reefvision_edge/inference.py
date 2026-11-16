@@ -100,8 +100,12 @@ class YoloOnnxDetector:
     ) -> None:
         self.model = model
         self.compute = resolve_compute(compute_choice)
+        self._requested_profiling = enable_profiling
+        self._cuda_validation_pending = (
+            self.compute.active_provider == "CUDAExecutionProvider"
+        )
         options = ort.SessionOptions()
-        options.enable_profiling = enable_profiling
+        options.enable_profiling = enable_profiling or self._cuda_validation_pending
         if hasattr(ort.InferenceSession, "get_provider_graph_assignment_info"):
             options.add_session_config_entry(
                 "session.record_ep_graph_assignment_info", "1"
@@ -133,6 +137,22 @@ class YoloOnnxDetector:
         self.profile_path: Path | None = None
         self.profile: OperatorProfile | None = None
 
+    def _fall_back_to_cpu_after_validation(self, reason: str) -> None:
+        if self.profile_path is not None:
+            self.profile_path.unlink(missing_ok=True)
+        self.compute = cpu_fallback(self.compute.requested, reason)
+        options = ort.SessionOptions()
+        options.enable_profiling = self._requested_profiling
+        self.session = ort.InferenceSession(
+            str(self.model.path),
+            sess_options=options,
+            providers=list(self.compute.providers),
+        )
+        self.input_name = self.session.get_inputs()[0].name
+        self.profile_path = None
+        self.profile = None
+        self.provider = provider_assignment_summary(self.session)
+
     @property
     def resolution(self) -> ComputeResolution:
         return self.compute
@@ -155,7 +175,22 @@ class YoloOnnxDetector:
         input_tensor = np.ascontiguousarray(
             rgb.transpose(2, 0, 1)[None].astype(np.float32) / 255.0
         )
-        output = self.session.run(None, {self.input_name: input_tensor})[0][0].T
+        output_value = self.session.run(None, {self.input_name: input_tensor})[0]
+        if self._cuda_validation_pending:
+            profile = self.finish_profile()
+            self._cuda_validation_pending = False
+            if profile is None or not profile.cuda_executed:
+                reason = (
+                    "CUDAExecutionProvider initialized but executed zero operators for "
+                    "this model. Check model/operator CUDA support and the bundled runtime."
+                )
+                if self.compute.requested is ComputeChoice.NVIDIA_GPU:
+                    raise ComputeDeviceError("NVIDIA GPU mode " + reason)
+                self._fall_back_to_cpu_after_validation(reason)
+                output_value = self.session.run(
+                    None, {self.input_name: input_tensor}
+                )[0]
+        output = output_value[0].T
         self.provider = provider_assignment_summary(self.session)
         detections: list[Detection] = []
         for candidate in output:

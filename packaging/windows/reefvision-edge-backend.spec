@@ -1,3 +1,5 @@
+import json
+import os
 from pathlib import Path
 
 from importlib.metadata import PackageNotFoundError, distribution
@@ -11,6 +13,20 @@ ROOT = SPEC_DIR.parents[1]
 datas = collect_data_files("reefvision_edge")
 binaries: list[tuple[str, str]] = []
 hiddenimports = collect_submodules("uvicorn")
+identity_path = ROOT / ".artifacts" / "windows-msi" / "build-identity.json"
+identity_path.parent.mkdir(parents=True, exist_ok=True)
+identity_path.write_text(
+    json.dumps(
+        {
+            "build_commit": os.environ.get("REEFVISION_EDGE_BUILD_COMMIT", "unknown"),
+            "runtime_profile": os.environ.get(
+                "REEFVISION_EDGE_RUNTIME_PROFILE", "unknown"
+            ),
+        },
+        sort_keys=True,
+    ),
+    encoding="utf-8",
+)
 
 for package in ("onnxruntime", "cv2"):
     package_datas, package_binaries, package_hidden = collect_all(package)
@@ -42,6 +58,7 @@ for package in (
 
 datas.extend(
     [
+        (str(identity_path), "."),
         (str(ROOT / "LICENSE"), "licenses"),
         (str(ROOT / "THIRD_PARTY_NOTICES.md"), "licenses"),
     ]

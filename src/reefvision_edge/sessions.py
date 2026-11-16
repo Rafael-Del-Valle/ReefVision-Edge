@@ -7,6 +7,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections import deque
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from contextlib import suppress
@@ -175,8 +176,11 @@ class SessionRunner:
         processed = 0
         detection_count = 0
         latency_total = 0.0
-        latencies: list[float] = []
+        latencies: deque[float] = deque(maxlen=4096)
+        median_latency_ms: float | None = None
+        p95_latency_ms: float | None = None
         peak_vram_mb: float | None = None
+        next_vram_sample_at = started
         detector: YoloOnnxDetector | None = None
         monitor_writer: MonitorVideoWriter | None = None
         try:
@@ -246,13 +250,20 @@ class SessionRunner:
                 next_processed = processed + 1
                 next_detection_count = detection_count + len(result.detections)
                 next_latency_total = latency_total + result.latency_ms
-                next_latencies = [*latencies, result.latency_ms]
+                latencies.append(result.latency_ms)
+                if next_processed == 1 or next_processed % 30 == 0:
+                    window = list(latencies)
+                    median_latency_ms = _percentile(window, 50)
+                    p95_latency_ms = _percentile(window, 95)
                 elapsed = max(time.perf_counter() - started, 1e-9)
-                current_vram = (
-                    sample_process_vram_mb()
-                    if detector.resolution.active_provider == "CUDAExecutionProvider"
-                    else None
-                )
+                now = time.perf_counter()
+                current_vram = None
+                if (
+                    detector.resolution.active_provider == "CUDAExecutionProvider"
+                    and now >= next_vram_sample_at
+                ):
+                    current_vram = sample_process_vram_mb()
+                    next_vram_sample_at = now + 2.0
                 if current_vram is not None:
                     peak_vram_mb = max(peak_vram_mb or 0, current_vram)
                 with self.database.connect() as connection:
@@ -309,8 +320,8 @@ class SessionRunner:
                             next_processed / elapsed,
                             1000 * next_processed / max(next_latency_total, 1e-9),
                             next_latency_total / next_processed,
-                            _percentile(next_latencies, 50),
-                            _percentile(next_latencies, 95),
+                            median_latency_ms,
+                            p95_latency_ms,
                             detector.resolution.active_provider,
                             peak_vram_mb,
                             camera.dropped_frames if camera else 0,
@@ -320,7 +331,6 @@ class SessionRunner:
                 processed = next_processed
                 detection_count = next_detection_count
                 latency_total = next_latency_total
-                latencies = next_latencies
                 if monitor_writer is not None:
                     monitor_writer.write(
                         render_monitor_frame(
@@ -342,9 +352,15 @@ class SessionRunner:
             terminal = "canceled" if canceled.is_set() else "completed"
             self._finish(session_id, terminal)
         except Exception as exc:
-            if monitor_writer is not None:
+            message = str(exc) or type(exc).__name__
+            if detector is not None:
+                try:
+                    self._finalize_artifacts(session_id, detector, monitor_writer)
+                except Exception as finalization_error:
+                    message += f" Artifact finalization also failed: {finalization_error}"
+            elif monitor_writer is not None:
                 monitor_writer.close()
-            self._fail_safely(session_id, str(exc) or type(exc).__name__)
+            self._fail_safely(session_id, message)
 
     def _finalize_artifacts(
         self,
@@ -452,6 +468,17 @@ class SessionService:
         compute = ComputeChoice(compute_device)
         preview = preview_overlays or OverlaySettings()
         recording = recording_overlays or OverlaySettings()
+        for name, overlays in (("preview", preview), ("recording", recording)):
+            unsupported = [
+                overlay
+                for overlay in ("trails", "masks")
+                if getattr(overlays, overlay)
+            ]
+            if unsupported:
+                raise ValueError(
+                    f"{name} overlays are not supported by the active pipeline: "
+                    + ", ".join(unsupported)
+                )
         settings = json.dumps(
             {
                 "sample_every": sample_every,

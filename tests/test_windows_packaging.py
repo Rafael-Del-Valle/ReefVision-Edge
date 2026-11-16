@@ -170,6 +170,17 @@ def test_frozen_backend_collects_and_activates_nested_nvidia_dll_directories() -
     assert 'rglob("bin")' in runtime_hook
 
 
+def test_frozen_backend_embeds_and_reports_bundle_commit_identity() -> None:
+    build_script = (ROOT / "scripts" / "build_windows_msi.ps1").read_text(
+        encoding="utf-8"
+    )
+    backend_entry = (WINDOWS / "backend_entry.py").read_text(encoding="utf-8")
+
+    assert "REEFVISION_EDGE_BUILD_COMMIT" in build_script
+    assert '"build_commit"' in backend_entry
+    assert "BUNDLE-METADATA.json" in build_script
+
+
 def test_installed_acceptance_requires_new_uploads_and_uninstall_isolation() -> None:
     acceptance = (ROOT / "scripts" / "acceptance_windows_installed.ps1").read_text(
         encoding="utf-8"

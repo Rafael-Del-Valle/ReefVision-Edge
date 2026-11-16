@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import cv2
@@ -127,6 +128,25 @@ def test_session_settings_keep_recording_and_overlay_controls_independent(
         ).fetchone()[0]
     assert frame_rows == 0
     assert detection_rows == 0
+
+
+def test_session_rejects_overlays_the_active_pipeline_cannot_render(
+    tmp_path: Path,
+) -> None:
+    _, model, source, _, _, service = prepared_services(tmp_path)
+
+    with pytest.raises(ValueError, match="trails"):
+        service.create(
+            model.id,
+            source.id,
+            preview_overlays=OverlaySettings(trails=True),
+        )
+    with pytest.raises(ValueError, match="masks"):
+        service.create(
+            model.id,
+            source.id,
+            recording_overlays=OverlaySettings(masks=True),
+        )
 
 
 @pytest.mark.parametrize(
@@ -308,3 +328,70 @@ def test_unexpected_detector_error_finishes_failed(tmp_path: Path) -> None:
     failed = service.get(session.id)
     assert failed.status == "failed"
     assert failed.error_message == "unexpected detector failure"
+
+
+def test_detector_failure_finalizes_partial_monitor_video(tmp_path: Path) -> None:
+    database, model, source, previews, _, _ = prepared_services(tmp_path)
+
+    class BrokenAfterTwoDetector(YoloOnnxDetector):
+        calls = 0
+
+        def predict(self, frame):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            if self.calls > 2:
+                raise ValueError("failure after two frames")
+            return super().predict(frame)
+
+    runner = SessionRunner(
+        database,
+        ModelRegistry(database, tmp_path / "models"),
+        MediaStore(database, tmp_path / "media"),
+        previews,
+        detector_factory=BrokenAfterTwoDetector,
+    )
+    service = SessionService(database, runner)
+    session = service.create(model.id, source.id, record_monitor=True)
+
+    runner.run(session.id)
+
+    failed = service.get(session.id)
+    assert failed.status == "failed"
+    assert failed.monitor_video_path is not None
+    capture = cv2.VideoCapture(failed.monitor_video_path)
+    try:
+        assert capture.isOpened()
+        assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == 2
+    finally:
+        capture.release()
+
+
+def test_vram_sampling_is_rate_limited(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database, model, source, previews, _, _ = prepared_services(tmp_path, frame_count=40)
+    samples = 0
+
+    def sample() -> float:
+        nonlocal samples
+        samples += 1
+        return 256.0
+
+    monkeypatch.setattr("reefvision_edge.sessions.sample_process_vram_mb", sample)
+
+    class CudaDetector(YoloOnnxDetector):
+        @property
+        def resolution(self):  # type: ignore[no-untyped-def]
+            return replace(super().resolution, active_provider="CUDAExecutionProvider")
+
+    runner = SessionRunner(
+        database,
+        ModelRegistry(database, tmp_path / "models"),
+        MediaStore(database, tmp_path / "media"),
+        previews,
+        detector_factory=CudaDetector,
+    )
+    service = SessionService(database, runner)
+    session = service.create(model.id, source.id, compute_device=ComputeChoice.CPU)
+
+    runner.run(session.id)
+
+    assert service.get(session.id).frame_count == 40
+    assert samples <= 2

@@ -13,6 +13,7 @@ $ProgressPreference = "SilentlyContinue"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $backend = (Resolve-Path -LiteralPath $BackendExe).Path
 $bundle = (Resolve-Path -LiteralPath $BundlePath).Path
+$bundleMetadata = Get-Content -Raw -LiteralPath (Join-Path $bundle "BUNDLE-METADATA.json") | ConvertFrom-Json
 $output = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputPath))
 $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot ".artifacts"))
 if (-not $output.StartsWith(
@@ -33,6 +34,12 @@ if ($diagnostics.nvidia_runtime_preload -ne "loaded") {
 }
 if ($diagnostics.available_providers -notcontains "CUDAExecutionProvider") {
     throw "Packaged runtime does not expose CUDAExecutionProvider."
+}
+if ($diagnostics.build_commit -ne $bundleMetadata.commit) {
+    throw "Packaged backend commit $($diagnostics.build_commit) does not match bundle commit $($bundleMetadata.commit)."
+}
+if ($diagnostics.runtime_profile -ne $bundleMetadata.runtime_profile) {
+    throw "Packaged backend runtime profile does not match the supplied bundle."
 }
 
 $listener = [System.Net.Sockets.TcpListener]::new(

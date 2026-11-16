@@ -91,7 +91,6 @@ def sample_process_vram_mb() -> float | None:
         return None
     current_pid = os.getpid()
     used: list[float] = []
-    current_process_listed = False
     for line in completed.stdout.splitlines():
         fields = [field.strip() for field in line.split(",", maxsplit=1)]
         if len(fields) != 2:
@@ -99,30 +98,10 @@ def sample_process_vram_mb() -> float | None:
         try:
             if int(fields[0]) != current_pid:
                 continue
-            current_process_listed = True
             used.append(float(fields[1]))
         except ValueError:
             continue
-    if used:
-        return max(used)
-    if not current_process_listed:
-        return None
-    try:
-        total = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=memory.used",
-                "--format=csv,noheader,nounits",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        return max(float(line.strip()) for line in total.stdout.splitlines() if line.strip())
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
+    return max(used) if used else None
 
 
 def _cpu_resolution(
