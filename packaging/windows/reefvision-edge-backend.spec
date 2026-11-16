@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from importlib.util import find_spec
+
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 
@@ -11,6 +13,22 @@ binaries: list[tuple[str, str]] = []
 hiddenimports = collect_submodules("uvicorn")
 
 for package in ("onnxruntime", "cv2"):
+    package_datas, package_binaries, package_hidden = collect_all(package)
+    datas.extend(package_datas)
+    binaries.extend(package_binaries)
+    hiddenimports.extend(package_hidden)
+
+for package in (
+    "nvidia.cublas",
+    "nvidia.cuda_nvrtc",
+    "nvidia.cuda_runtime",
+    "nvidia.cudnn",
+    "nvidia.cufft",
+    "nvidia.curand",
+    "nvidia.nvjitlink",
+):
+    if find_spec(package) is None:
+        continue
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas.extend(package_datas)
     binaries.extend(package_binaries)
@@ -31,7 +49,7 @@ analysis = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(SPEC_DIR / "runtime_hook_nvidia.py")],
     excludes=[],
     noarchive=False,
     optimize=0,

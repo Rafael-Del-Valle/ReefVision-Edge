@@ -17,3 +17,5 @@ No remote fonts, icons, model weights, or image assets from ReefVision are bundl
 ## Runtime and build dependencies
 
 Python and JavaScript dependencies retain their own licenses. Important runtime components include FastAPI, Starlette, Uvicorn, Pydantic, NumPy, OpenCV, ONNX Runtime, React, and Vite. Consult the installed package metadata and lock file for exact versions and license texts.
+
+The Windows CUDA runtime profile redistributes NVIDIA CUDA 13.4 libraries (CUDA Runtime, NVRTC, nvJitLink, cuBLAS, cuFFT, and cuRAND) and NVIDIA cuDNN 9 under their respective NVIDIA license terms. Exact versions and wheel SHA-256 values are recorded in `packaging/windows/runtime-windows-cuda.lock`. These libraries accelerate ONNX Runtime inference only; the required monitor-video baseline remains the OpenCV software encoder.

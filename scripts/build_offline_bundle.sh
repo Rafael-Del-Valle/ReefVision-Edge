@@ -3,6 +3,12 @@ set -euo pipefail
 
 repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 output=${1:-"$repo_root/.artifacts/reefvision-edge-offline"}
+runtime_profile=${2:-cpu}
+case "$runtime_profile" in
+  cpu) install_target='.[runtime-cpu]' ;;
+  jetson) install_target='.' ;;
+  *) echo "runtime profile must be cpu or jetson" >&2; exit 2 ;;
+esac
 artifact_root="$repo_root/.artifacts"
 mkdir -p "$artifact_root"
 artifact_root=$(CDPATH='' cd -- "$artifact_root" && pwd -P)
@@ -22,7 +28,10 @@ cd "$repo_root"
 npm --prefix web ci
 npm --prefix web run build
 python3 -m build --wheel --outdir "$bundle/app"
-python3 -m pip download --dest "$bundle/wheels" .
+python3 -m pip download --dest "$bundle/wheels" "$install_target"
+printf '{"profile":"%s","platform":"linux-native","jetpack_runtime_external":%s}\n' \
+  "$runtime_profile" "$([ "$runtime_profile" = jetson ] && printf true || printf false)" \
+  > "$bundle/runtime-profile.json"
 git archive --format=tar.gz --output="$bundle/reefvision-edge-source.tar.gz" HEAD
 (
   cd "$bundle"

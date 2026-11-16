@@ -2,7 +2,8 @@
 param(
     [switch]$BackendOnly,
     [Parameter(Mandatory = $true)]
-    [string]$WebView2Installer
+    [string]$WebView2Installer,
+    [string]$BundleRoot = ".artifacts\reefvision-edge-offline-windows-cuda-v0.1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,7 +11,7 @@ $ProgressPreference = "SilentlyContinue"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $verifiedCommit = "bdc9d8795961c71cf55af244addd2c18281f2ec8"
-$bundleRoot = Join-Path $repoRoot ".artifacts\reefvision-edge-offline-v0.1-bdc9d87"
+$bundleRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $BundleRoot))
 $workRoot = Join-Path $repoRoot ".artifacts\windows-msi"
 $buildVenv = Join-Path $workRoot "build-venv"
 $buildPython = Join-Path $buildVenv "Scripts\python.exe"
@@ -63,6 +64,19 @@ try {
             throw "Checksum mismatch for $relative"
         }
     }
+    $bundleMetadataPath = Join-Path $bundleRoot "BUNDLE-METADATA.json"
+    $runtimeLock = Join-Path $bundleRoot "runtime.lock"
+    if (-not (Test-Path -LiteralPath $bundleMetadataPath)) {
+        throw "Bundle metadata is missing: $bundleMetadataPath"
+    }
+    if (-not (Test-Path -LiteralPath $runtimeLock)) {
+        throw "Runtime lock is missing: $runtimeLock"
+    }
+    $bundleMetadata = Get-Content -Raw -LiteralPath $bundleMetadataPath | ConvertFrom-Json
+    $headCommit = (& git rev-parse HEAD).Trim()
+    if ($bundleMetadata.commit -ne $headCommit) {
+        throw "Offline bundle commit $($bundleMetadata.commit) does not match HEAD $headCommit."
+    }
 
     New-Item -ItemType Directory -Path $workRoot -Force | Out-Null
     if (-not (Test-Path -LiteralPath $buildPython)) {
@@ -70,13 +84,18 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Could not create the Windows packaging environment." }
     }
 
-    & $buildPython -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+    & $buildPython -m pip install --disable-pip-version-check --no-index `
+        --find-links (Join-Path $bundleRoot "wheels") "pyinstaller==6.16.0"
     if ($LASTEXITCODE -ne 0) { throw "Could not install pinned PyInstaller." }
     & $buildPython -m pip install --disable-pip-version-check --no-index `
         --find-links (Join-Path $bundleRoot "app") `
         --find-links (Join-Path $bundleRoot "wheels") `
         "reefvision-edge==0.1.0"
     if ($LASTEXITCODE -ne 0) { throw "Could not install the verified offline application bundle." }
+    & $buildPython -m pip install --disable-pip-version-check --no-index `
+        --find-links (Join-Path $bundleRoot "wheels") `
+        --require-hashes --requirement $runtimeLock
+    if ($LASTEXITCODE -ne 0) { throw "Could not install the pinned offline inference runtime." }
 
     & $buildPython -m PyInstaller --noconfirm --clean `
         --distpath $backendDist --workpath $backendWork $spec

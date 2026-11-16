@@ -1,5 +1,7 @@
 param(
-    [string]$OutputPath = ".artifacts\reefvision-edge-offline"
+    [string]$OutputPath = ".artifacts\reefvision-edge-offline",
+    [ValidateSet("cpu", "cuda")]
+    [string]$RuntimeProfile = "cuda"
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,13 +13,10 @@ $artifactRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot ".artifacts")
 if (-not $bundlePath.StartsWith($artifactRoot + [System.IO.Path]::DirectorySeparatorChar)) {
     throw "Output must be a child of $artifactRoot"
 }
-if (Test-Path -LiteralPath $bundlePath) {
-    throw "Refusing to overwrite existing bundle: $bundlePath"
-}
-
-New-Item -ItemType Directory -Path $bundlePath | Out-Null
+& (Join-Path $PSScriptRoot "build_windows_runtime_bundle.ps1") `
+    -Profile $RuntimeProfile -OutputPath $OutputPath
+if ($LASTEXITCODE -ne 0) { throw "Windows runtime bundle build failed." }
 New-Item -ItemType Directory -Path (Join-Path $bundlePath "app") | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $bundlePath "wheels") | Out-Null
 
 Push-Location $repoRoot
 try {
@@ -27,12 +26,22 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "npm build failed with exit code $LASTEXITCODE" }
     & $python -m build --wheel --outdir (Join-Path $bundlePath "app")
     if ($LASTEXITCODE -ne 0) { throw "wheel build failed with exit code $LASTEXITCODE" }
-    & $python -m pip download --dest (Join-Path $bundlePath "wheels") .
+    & $python -m pip download --dest (Join-Path $bundlePath "wheels") ".[windows-package]"
     if ($LASTEXITCODE -ne 0) { throw "wheel download failed with exit code $LASTEXITCODE" }
     $sourceArchive = Join-Path $bundlePath "reefvision-edge-source.zip"
     git archive --format=zip -o $sourceArchive HEAD
     if ($LASTEXITCODE -ne 0) { throw "source archive failed with exit code $LASTEXITCODE" }
+    $bundleMetadata = [ordered]@{
+        product = "ReefVision-Edge"
+        version = "0.1.0"
+        commit = (& git rev-parse HEAD).Trim()
+        runtime_profile = $RuntimeProfile
+        platform = "windows-x64"
+    }
+    $bundleMetadata | ConvertTo-Json | Set-Content `
+        -LiteralPath (Join-Path $bundlePath "BUNDLE-METADATA.json") -Encoding utf8
     Get-ChildItem -Path $bundlePath -Recurse -File |
+        Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
         Get-FileHash -Algorithm SHA256 |
         ForEach-Object { "$($_.Hash.ToLower())  $($_.Path.Substring($bundlePath.Length + 1).Replace('\', '/'))" } |
         Set-Content -LiteralPath (Join-Path $bundlePath "SHA256SUMS.txt") -Encoding utf8

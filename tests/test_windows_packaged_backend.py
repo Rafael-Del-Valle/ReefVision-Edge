@@ -44,6 +44,18 @@ def test_packaged_backend_runs_without_source_checkout(tmp_path: Path) -> None:
     assert version.returncode == 0, version.stderr
     assert version.stdout.strip() == "reefvision-edge 0.1.0"
 
+    diagnostics = subprocess.run(
+        [str(PACKAGED_EXE), "--runtime-diagnostics"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert diagnostics.returncode == 0, diagnostics.stderr
+    runtime = json.loads(diagnostics.stdout)
+    assert "CUDAExecutionProvider" in runtime["available_providers"]
+    assert runtime["nvidia_runtime_preload"] == "loaded"
+
     source = ROOT / "src"
     disabled_source = ROOT / ".artifacts" / "windows-msi" / "source-disabled"
     assert source.is_dir()

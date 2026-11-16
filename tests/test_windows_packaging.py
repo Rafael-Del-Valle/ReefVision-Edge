@@ -59,6 +59,69 @@ def test_backend_entry_executes_the_verified_application_cli() -> None:
     assert rejected.returncode != 0
     assert "only accepts --host 127.0.0.1" in rejected.stderr
 
+    diagnostics = subprocess.run(
+        [sys.executable, str(WINDOWS / "backend_entry.py"), "--runtime-diagnostics"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert diagnostics.returncode == 0, diagnostics.stderr
+    payload = json.loads(diagnostics.stdout)
+    assert "CPUExecutionProvider" in payload["available_providers"]
+    assert payload["onnxruntime_version"]
+    assert payload["nvidia_runtime_preload"] in {"loaded", "unavailable", "failed"}
+
+
+def test_runtime_bundle_profiles_resolve_exact_hashed_dependencies() -> None:
+    script = ROOT / "scripts" / "build_windows_runtime_bundle.ps1"
+    for profile, expected_runtime in (
+        ("cpu", "onnxruntime==1.32.0"),
+        ("cuda", "onnxruntime-gpu==1.32.0"),
+    ):
+        completed = subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-File",
+                str(script),
+                "-Profile",
+                profile,
+                "-ValidateOnly",
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+        payload = json.loads(completed.stdout)
+        assert payload["profile"] == profile
+        assert expected_runtime in payload["requirements"]
+        assert all("==" in requirement for requirement in payload["requirements"])
+        assert payload["all_requirements_hashed"] is True
+        assert len(payload["lock_sha256"]) == 64
+
+    cuda = json.loads(
+        subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-File",
+                str(script),
+                "-Profile",
+                "cuda",
+                "-ValidateOnly",
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    assert "nvidia-cudnn-cu13==9.28.1.4" in cuda["requirements"]
+    assert "nvidia-cuda-runtime==13.4.92" in cuda["requirements"]
+
 
 def test_verified_application_wheel_contains_dashboard_assets() -> None:
     wheels = list((VERIFIED_BUNDLE / "app").glob("reefvision_edge-0.1.0-*.whl"))

@@ -140,21 +140,23 @@ HTTP Basic authentication does not encrypt traffic. Use a trusted isolated LAN o
 Run the matching script on the same OS/CPU architecture and Python minor version as the target, because native NumPy, OpenCV, and ONNX Runtime wheels are platform-specific.
 
 ```powershell
-.\scripts\build_offline_bundle.ps1
+.\scripts\build_offline_bundle.ps1 `
+  -RuntimeProfile cuda `
+  -OutputPath .artifacts\reefvision-edge-offline-windows-cuda-v0.1
 ```
 
 ```bash
-./scripts/build_offline_bundle.sh
+./scripts/build_offline_bundle.sh .artifacts/reefvision-edge-offline cpu
 ```
 
-The bundle contains the ReefVision-Edge wheel (including the dashboard), dependency wheels, source archive, and checksums. On the offline target:
+The Windows builder accepts `cuda` (ONNX Runtime GPU 1.32.0, CUDA 13.4, cuDNN 9) or `cpu`. Both profiles are exact, SHA-256 locked, and stored with the ReefVision-Edge wheel (including the dashboard), dependency/build wheels, source archive, commit metadata, and checksums. Windows CUDA setup is therefore reproducible from the resulting local bundle and does not download libraries when the application runs. On an offline target, install the app wheels and then `runtime.lock`.
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install --no-index --find-links wheels app/reefvision_edge-0.1.0-py3-none-any.whl
 ```
 
-Jetson acceleration wheels are JetPack-specific and are not bundled or claimed by the Windows verification run. Install a compatible NVIDIA ONNX Runtime/TensorRT provider separately, then confirm `/api/capabilities` and the provider shown in the session.
+For Jetson, pass the separate `jetson` profile. It intentionally omits desktop ONNX Runtime wheels because JetPack acceleration builds are release-specific; install the matching NVIDIA ONNX Runtime/TensorRT provider into that bundle before deployment, then confirm `/api/capabilities` and the provider shown in the session. Jetson remains outside the Windows verification run.
 
 ## Windows desktop MSI
 
@@ -162,10 +164,11 @@ The Windows x64 MSI installs a self-contained desktop build for the current user
 
 ```powershell
 .\scripts\build_windows_msi.ps1 `
+  -BundleRoot .artifacts\reefvision-edge-offline-windows-cuda-v0.1 `
   -WebView2Installer C:\path\to\MicrosoftEdgeWebView2RuntimeInstallerX64.exe
 ```
 
-The WebView2 argument is an explicit offline packaging input. The build accepts only the reference payload used by ReefVision, SHA-256 `D3CBE8FEDB104282D745FFF106993EFEAD51AE94F5595A4E75804446A974F9C3`, and rejects any missing or different executable before WiX runs. The build also verifies the checked-in offline bundle, stages the frozen backend, runs source-independent smoke tests, and writes `ReefVision-Edge-0.1.0-windows-x64.msi` to the current user's Downloads folder. The installed layout is intentionally separate from ReefVision:
+The WebView2 argument is an explicit offline packaging input. The build accepts only the reference payload used by ReefVision, SHA-256 `D3CBE8FEDB104282D745FFF106993EFEAD51AE94F5595A4E75804446A974F9C3`, and rejects any missing or different executable before WiX runs. The build verifies every bundle checksum and requires its recorded commit to equal `HEAD`, installs all build/application/runtime dependencies with `--no-index`, stages the frozen backend, and writes `ReefVision-Edge-0.1.0-windows-x64.msi` to the current user's Downloads folder. The installed layout is intentionally separate from ReefVision:
 
 ```text
 %LOCALAPPDATA%\Programs\ReefVision-Edge\  application and frozen backend
