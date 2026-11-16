@@ -62,6 +62,7 @@ export const FrameSurface = memo(function FrameSurface({
     const intervalMs = 1000 / Math.max(1, targetFps);
     let telemetryStartedAt = performance.now();
     let displayedFrames = 0;
+    let lastDisplayedFrameIndex: number | null = null;
 
     async function pump() {
       while (!controller.signal.aborted) {
@@ -73,38 +74,43 @@ export const FrameSurface = memo(function FrameSurface({
             signal: controller.signal,
           });
           if (response.ok) {
-            bitmap = await createImageBitmap(await response.blob());
-            if (!controller.signal.aborted) {
-              const canvas = canvasRef.current;
-              const context = canvas?.getContext("2d");
-              if (canvas && context) {
-                if (
-                  canvas.width !== bitmap.width ||
-                  canvas.height !== bitmap.height
-                ) {
-                  canvas.width = bitmap.width;
-                  canvas.height = bitmap.height;
-                }
-                context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-                displayedFrames += 1;
-                const now = performance.now();
-                const telemetryElapsed = now - telemetryStartedAt;
-                if (telemetryElapsed >= 1000) {
-                  const { publishedAt, frameIndex } = parseFrameHeaders(
-                    response.headers,
-                  );
-                  telemetryRef.current?.({
-                    displayedFps: (displayedFrames * 1000) / telemetryElapsed,
-                    frameAgeMs:
-                      publishedAt === null
-                        ? null
-                        : Math.max(0, Date.now() - publishedAt * 1000),
-                    frameIndex,
-                  });
-                  telemetryStartedAt = now;
-                  displayedFrames = 0;
+            const { publishedAt, frameIndex } = parseFrameHeaders(
+              response.headers,
+            );
+            const isDistinctFrame =
+              frameIndex === null || frameIndex !== lastDisplayedFrameIndex;
+            if (isDistinctFrame) {
+              bitmap = await createImageBitmap(await response.blob());
+              if (!controller.signal.aborted) {
+                const canvas = canvasRef.current;
+                const context = canvas?.getContext("2d");
+                if (canvas && context) {
+                  if (
+                    canvas.width !== bitmap.width ||
+                    canvas.height !== bitmap.height
+                  ) {
+                    canvas.width = bitmap.width;
+                    canvas.height = bitmap.height;
+                  }
+                  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                  displayedFrames += 1;
+                  lastDisplayedFrameIndex = frameIndex;
                 }
               }
+            }
+            const now = performance.now();
+            const telemetryElapsed = now - telemetryStartedAt;
+            if (telemetryElapsed >= 1000) {
+              telemetryRef.current?.({
+                displayedFps: (displayedFrames * 1000) / telemetryElapsed,
+                frameAgeMs:
+                  publishedAt === null
+                    ? null
+                    : Math.max(0, Date.now() - publishedAt * 1000),
+                frameIndex,
+              });
+              telemetryStartedAt = now;
+              displayedFrames = 0;
             }
           }
         } catch (error) {

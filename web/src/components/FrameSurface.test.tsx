@@ -96,6 +96,40 @@ test("recovers after an initial missing frame", async () => {
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 
+test("counts and draws only distinct published frame indexes", async () => {
+  vi.useFakeTimers();
+  const drawImage = installCanvas();
+  const onTelemetry = vi.fn();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(frameResponse(9))),
+  );
+  vi.stubGlobal(
+    "createImageBitmap",
+    vi.fn(async () => ({ width: 640, height: 480, close: vi.fn() })),
+  );
+  try {
+    render(
+      <FrameSurface
+        endpoint="/api/frame"
+        streamKey="camera"
+        label="Camera"
+        targetFps={10}
+        onTelemetry={onTelemetry}
+      />,
+    );
+
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(onTelemetry).toHaveBeenCalled();
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    expect(createImageBitmap).toHaveBeenCalledTimes(1);
+    expect(onTelemetry.mock.calls[0][0].displayedFps).toBeCloseTo(1);
+    expect(onTelemetry.mock.calls[0][0].frameIndex).toBe(9);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("cancels a stale decoded frame when the stream changes", async () => {
   const drawImage = installCanvas();
   let resolveOld: ((bitmap: ImageBitmap) => void) | undefined;

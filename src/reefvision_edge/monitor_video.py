@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import cv2
@@ -91,6 +92,8 @@ def render_monitor_frame(
 
 
 class MonitorVideoWriter:
+    MAX_CATCH_UP_FRAMES = 300
+
     def __init__(self, path: Path, *, fps: float) -> None:
         if fps <= 0:
             raise ValueError("Monitor recording FPS must be positive.")
@@ -108,6 +111,7 @@ class MonitorVideoWriter:
     ) -> bool:
         if self._closed:
             raise RuntimeError("Monitor video writer is already closed.")
+        frames_due = 1
         if timestamp_ms is not None:
             if self._timeline_origin_ms is None:
                 self._timeline_origin_ms = timestamp_ms
@@ -115,8 +119,18 @@ class MonitorVideoWriter:
             if relative_ms + 1e-6 < self._next_output_ms:
                 return False
             frame_interval_ms = 1000.0 / self.fps
-            while self._next_output_ms <= relative_ms + 1e-6:
-                self._next_output_ms += frame_interval_ms
+            frames_due = (
+                math.floor(
+                    (relative_ms + 1e-6 - self._next_output_ms)
+                    / frame_interval_ms
+                )
+                + 1
+            )
+            if frames_due > self.MAX_CATCH_UP_FRAMES:
+                frames_due = self.MAX_CATCH_UP_FRAMES
+                self._next_output_ms = relative_ms + frame_interval_ms
+            else:
+                self._next_output_ms += frames_due * frame_interval_ms
         size = (int(frame.shape[1]), int(frame.shape[0]))
         if self._writer is None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,8 +148,9 @@ class MonitorVideoWriter:
                 )
         if size != self._size:
             raise RuntimeError("Monitor recording frame dimensions changed during the run.")
-        self._writer.write(frame)
-        self.frames_written += 1
+        for _ in range(frames_due):
+            self._writer.write(frame)
+        self.frames_written += frames_due
         return True
 
     def close(self) -> None:

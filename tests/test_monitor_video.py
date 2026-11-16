@@ -94,6 +94,37 @@ def test_monitor_video_writer_paces_sixty_fps_timestamps_to_thirty_fps(
     assert decoded / fps == pytest.approx(1.0)
 
 
+def test_monitor_video_writer_holds_ten_fps_frames_on_thirty_fps_timeline(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "held.mp4"
+    writer = MonitorVideoWriter(path, fps=30.0)
+    for index in range(31):
+        frame = np.full((64, 96, 3), index, dtype=np.uint8)
+        writer.write(frame, timestamp_ms=index * 100.0)
+    writer.close()
+
+    capture = cv2.VideoCapture(str(path))
+    try:
+        decoded = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = capture.get(cv2.CAP_PROP_FPS)
+    finally:
+        capture.release()
+    assert decoded == 91
+    assert decoded / fps == pytest.approx(3.0, abs=1 / 30)
+
+
+def test_monitor_video_writer_bounds_pathological_timestamp_gap(tmp_path: Path) -> None:
+    writer = MonitorVideoWriter(tmp_path / "bounded.mp4", fps=30.0)
+    frame = np.zeros((64, 96, 3), dtype=np.uint8)
+
+    writer.write(frame, timestamp_ms=0.0)
+    writer.write(frame, timestamp_ms=60_000.0)
+    writer.close()
+
+    assert writer.frames_written == writer.MAX_CATCH_UP_FRAMES + 1
+
+
 def test_monitor_video_writer_reports_encoder_open_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
