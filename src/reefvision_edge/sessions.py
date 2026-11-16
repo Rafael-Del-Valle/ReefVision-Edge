@@ -19,6 +19,7 @@ from reefvision_edge.domain import OverlaySettings
 from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
+from reefvision_edge.monitor_video import MonitorVideoWriter, render_monitor_frame
 from reefvision_edge.preview import PreviewStore
 from reefvision_edge.sources import (
     RecordedVideoSource,
@@ -176,6 +177,8 @@ class SessionRunner:
         latency_total = 0.0
         latencies: list[float] = []
         peak_vram_mb: float | None = None
+        detector: YoloOnnxDetector | None = None
+        monitor_writer: MonitorVideoWriter | None = None
         try:
             record = _get_session(self.database, session_id)
             if record.status == "queued":
@@ -214,6 +217,15 @@ class SessionRunner:
                 )
             source_record = self.media_store.get_record(record.source_id)
             source_path = Path(str(source_record["path"]))
+            source_metadata = source_record["metadata"]
+            assert isinstance(source_metadata, dict)
+            if record.record_monitor:
+                reported_fps = float(source_metadata.get("fps") or 30.0)
+                recording_fps = max(reported_fps / record.sample_every, 0.1)
+                monitor_writer = MonitorVideoWriter(
+                    self.database.path.parent / "recordings" / f"{session_id}.mp4",
+                    fps=recording_fps,
+                )
             camera: V4L2CameraSource | WindowsCameraSource | None = None
             if source_record["kind"] == "video":
                 if not source_path.exists():
@@ -226,6 +238,7 @@ class SessionRunner:
                 raise SourceError(f"Unsupported source kind {source_record['kind']}.")
             for source_frame in source_frames:
                 if canceled.is_set():
+                    self._finalize_artifacts(session_id, detector, monitor_writer)
                     self._finish(session_id, "canceled")
                     return
                 result = detector.predict(source_frame.frame)
@@ -308,18 +321,46 @@ class SessionRunner:
                 detection_count = next_detection_count
                 latency_total = next_latency_total
                 latencies = next_latencies
+                if monitor_writer is not None:
+                    monitor_writer.write(
+                        render_monitor_frame(
+                            source_frame.frame,
+                            result.detections,
+                            source_frame.timestamp_ms,
+                            record.recording_overlays,
+                        )
+                    )
                 self.previews.put(
                     session_id,
                     source_frame.frame_index,
                     source_frame.timestamp_ms,
                     source_frame.frame,
                     result.detections,
+                    record.preview_overlays,
                 )
-            self._store_profile(session_id, detector)
+            self._finalize_artifacts(session_id, detector, monitor_writer)
             terminal = "canceled" if canceled.is_set() else "completed"
             self._finish(session_id, terminal)
         except Exception as exc:
+            if monitor_writer is not None:
+                monitor_writer.close()
             self._fail_safely(session_id, str(exc) or type(exc).__name__)
+
+    def _finalize_artifacts(
+        self,
+        session_id: str,
+        detector: YoloOnnxDetector,
+        monitor_writer: MonitorVideoWriter | None,
+    ) -> None:
+        if monitor_writer is not None:
+            monitor_writer.close()
+            if monitor_writer.frames_written and monitor_writer.path.is_file():
+                with self.database.connect() as connection:
+                    connection.execute(
+                        "UPDATE sessions SET monitor_video_path = ? WHERE id = ?",
+                        (str(monitor_writer.path), session_id),
+                    )
+        self._store_profile(session_id, detector)
 
     def _store_profile(self, session_id: str, detector: YoloOnnxDetector) -> None:
         profile = detector.finish_profile()

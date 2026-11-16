@@ -41,6 +41,10 @@ class Settings(BaseSettings):
         return self.data_dir / "previews"
 
     @property
+    def recordings_dir(self) -> Path:
+        return self.data_dir / "recordings"
+
+    @property
     def is_loopback(self) -> bool:
         if self.bind_host.casefold() == "localhost":
             return True

@@ -129,6 +129,84 @@ def test_session_settings_keep_recording_and_overlay_controls_independent(
     assert detection_rows == 0
 
 
+@pytest.mark.parametrize(
+    ("record_data", "record_monitor", "expect_rows", "expect_video"),
+    [
+        (True, False, True, False),
+        (False, True, False, True),
+        (True, True, True, True),
+    ],
+)
+def test_data_and_monitor_recording_modes_are_independent(
+    tmp_path: Path,
+    record_data: bool,
+    record_monitor: bool,
+    expect_rows: bool,
+    expect_video: bool,
+) -> None:
+    database, model, source, _, runner, service = prepared_services(tmp_path)
+    session = service.create(
+        model.id,
+        source.id,
+        record_data=record_data,
+        record_monitor=record_monitor,
+    )
+
+    runner.run(session.id)
+
+    completed = service.get(session.id)
+    with database.connect() as connection:
+        rows = connection.execute(
+            "SELECT COUNT(*) FROM frames WHERE session_id = ?", (session.id,)
+        ).fetchone()[0]
+    assert (rows > 0) is expect_rows
+    assert (completed.monitor_video_path is not None) is expect_video
+    if completed.monitor_video_path:
+        capture = cv2.VideoCapture(completed.monitor_video_path)
+        try:
+            assert capture.isOpened()
+            assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == completed.frame_count
+        finally:
+            capture.release()
+
+
+def test_cancel_finalizes_partial_monitor_video(tmp_path: Path) -> None:
+    database, model, source, previews, _, _ = prepared_services(
+        tmp_path, frame_count=80
+    )
+
+    class SlowDetector(YoloOnnxDetector):
+        def predict(self, frame):  # type: ignore[no-untyped-def]
+            time.sleep(0.01)
+            return super().predict(frame)
+
+    runner = SessionRunner(
+        database,
+        ModelRegistry(database, tmp_path / "models"),
+        MediaStore(database, tmp_path / "media"),
+        previews,
+        detector_factory=SlowDetector,
+    )
+    service = SessionService(database, runner)
+    session = service.create(model.id, source.id, record_monitor=True)
+    service.start(session.id)
+    deadline = time.monotonic() + 3
+    while service.get(session.id).frame_count < 2 and time.monotonic() < deadline:
+        time.sleep(0.005)
+    service.stop(session.id)
+    runner.wait(session.id, timeout=3)
+
+    canceled = service.get(session.id)
+    assert canceled.status == "canceled"
+    assert canceled.monitor_video_path is not None
+    capture = cv2.VideoCapture(canceled.monitor_video_path)
+    try:
+        assert capture.isOpened()
+        assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == canceled.frame_count
+    finally:
+        capture.release()
+
+
 def test_running_session_can_be_canceled_with_committed_progress(tmp_path: Path) -> None:
     database, model, source, previews, _, _ = prepared_services(tmp_path, frame_count=40)
 

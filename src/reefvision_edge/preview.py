@@ -12,7 +12,8 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from reefvision_edge.domain import Detection
+from reefvision_edge.domain import Detection, OverlaySettings
+from reefvision_edge.monitor_video import render_monitor_frame
 
 
 @dataclass(frozen=True)
@@ -26,34 +27,12 @@ class PreviewFrame:
 def draw_overlay(
     frame: NDArray[np.uint8], detections: tuple[Detection, ...]
 ) -> NDArray[np.uint8]:
-    rendered = frame.copy()
-    color = (201, 219, 114)
-    for detection in detections:
-        x_min, y_min, x_max, y_max = (round(value) for value in detection.box)
-        cv2.rectangle(rendered, (x_min, y_min), (x_max, y_max), color, 2)
-        label = f"{detection.class_name} {detection.score:.2f}"
-        (text_width, text_height), _ = cv2.getTextSize(
-            label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
-        )
-        label_top = max(0, y_min - text_height - 8)
-        cv2.rectangle(
-            rendered,
-            (x_min, label_top),
-            (x_min + text_width + 8, y_min),
-            color,
-            -1,
-        )
-        cv2.putText(
-            rendered,
-            label,
-            (x_min + 4, max(text_height + 1, y_min - 4)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
-            (6, 23, 28),
-            1,
-            cv2.LINE_AA,
-        )
-    return rendered
+    return render_monitor_frame(
+        frame,
+        detections,
+        None,
+        OverlaySettings(timer=False, boxes=True, labels=True),
+    )
 
 
 class PreviewStore:
@@ -84,8 +63,11 @@ class PreviewStore:
         timestamp_ms: float | None,
         frame: NDArray[np.uint8],
         detections: tuple[Detection, ...],
+        settings: OverlaySettings | None = None,
     ) -> PreviewFrame:
-        rendered = draw_overlay(frame, detections)
+        rendered = render_monitor_frame(
+            frame, detections, timestamp_ms, settings or OverlaySettings()
+        )
         encoded, buffer = cv2.imencode(".jpg", rendered, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if not encoded:
             raise RuntimeError("Preview JPEG encoding failed.")
