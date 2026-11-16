@@ -32,10 +32,12 @@
 ### Task 1: Service foundation, settings, authentication, and database
 
 **Files:**
+
 - Create: `pyproject.toml`, `.gitignore`, `src/reefvision_edge/config.py`, `src/reefvision_edge/auth.py`, `src/reefvision_edge/db.py`, `src/reefvision_edge/models.py`, `src/reefvision_edge/app.py`
 - Test: `tests/test_config_auth.py`, `tests/test_database.py`
 
 **Interfaces:**
+
 - Produces: `Settings.from_env() -> Settings`, `require_safe_bind(settings) -> None`, `Database.initialize()`, `create_app(settings: Settings) -> FastAPI`.
 
 - [ ] Write failing tests for loopback defaults, LAN credential refusal, Basic auth across `/`, `/api/health`, and `/api/previews/x`, schema initialization, and stale-running recovery.
@@ -47,10 +49,12 @@
 ### Task 2: Model registration and ONNX inference adapter
 
 **Files:**
+
 - Create: `src/reefvision_edge/domain.py`, `src/reefvision_edge/model_registry.py`, `src/reefvision_edge/inference.py`, `src/reefvision_edge/geometry.py`, `tests/fixtures/build_tiny_model.py`
 - Test: `tests/test_model_registry.py`, `tests/test_inference.py`
 
 **Interfaces:**
+
 - Consumes: `Database`, managed storage paths from `Settings`.
 - Produces: `ModelMetadata`, `ModelRegistry.register(model_stream, metadata) -> RegisteredModel`, `YoloOnnxDetector.predict(frame) -> InferenceResult`, `letterbox()`, and `restore_box()`.
 
@@ -63,10 +67,12 @@
 ### Task 3: Video and camera sources
 
 **Files:**
+
 - Create: `src/reefvision_edge/sources.py`, `src/reefvision_edge/media_store.py`, `tests/fixtures/build_video.py`
 - Test: `tests/test_sources.py`
 
 **Interfaces:**
+
 - Produces: `MediaStore.import_video(stream, filename) -> VideoSource`, `RecordedVideoSource.frames(sample_every)`, `V4L2CameraSource.frames(queue_size=1)`, and `probe_video(path) -> VideoProbe`.
 
 - [ ] Write failing tests for immutable upload copy/hash, deterministic frame indices/timestamps, unreadable video errors, unsupported camera host/unavailable device errors, and a bounded newest-frame queue.
@@ -78,10 +84,12 @@
 ### Task 4: Durable session engine and previews
 
 **Files:**
+
 - Create: `src/reefvision_edge/sessions.py`, `src/reefvision_edge/preview.py`
 - Test: `tests/test_sessions.py`, `tests/test_failure_paths.py`
 
 **Interfaces:**
+
 - Consumes: registered model, source iterators, detector, database.
 - Produces: `SessionService.create/start/stop/get/list`, `SessionRunner.run(session_id)`, `PreviewStore.put/get`, and immutable frame/detection records.
 
@@ -94,10 +102,12 @@
 ### Task 5: Versioned exports and round-trip validation
 
 **Files:**
+
 - Create: `src/reefvision_edge/exports.py`, `docs/export-schema-v1.md`, `examples/session-export/manifest.json`, `examples/session-export/detections.csv`
 - Test: `tests/test_exports.py`
 
 **Interfaces:**
+
 - Consumes: session/model/source/frame/detection rows.
 - Produces: `ExportService.build_zip(session_id) -> Path`, `validate_export(path) -> ExportSummary`.
 
@@ -110,10 +120,12 @@
 ### Task 6: Typed API and ReefVision-themed dashboard
 
 **Files:**
+
 - Create: `src/reefvision_edge/api.py`, `web/package.json`, `web/src/api.ts`, `web/src/types.ts`, `web/src/main.tsx`, `web/src/App.tsx`, `web/src/views/Monitor.tsx`, `web/src/views/Sessions.tsx`, `web/src/views/Settings.tsx`, `web/src/styles/theme.css`, `web/src/styles/app.css`
 - Test: `tests/test_api.py`, `web/src/App.test.tsx`, `web/src/styles/theme.test.ts`
 
 **Interfaces:**
+
 - Produces: REST routes for health/capabilities, models, sources, sessions, preview, stop, export, and settings; dashboard navigation and workflows consuming those routes.
 
 - [ ] Write failing backend API tests and frontend component/theme-token tests covering successful workflow plus invalid metadata, unreadable video, unavailable camera, and provider/session status messages.
@@ -125,9 +137,11 @@
 ### Task 7: Browser acceptance, theme parity, and screenshots
 
 **Files:**
+
 - Create: `web/playwright.config.ts`, `web/tests/e2e/field-workflow.spec.ts`, `web/tests/e2e/theme.spec.ts`, `docs/screenshots/*.png`
 
 **Interfaces:**
+
 - Consumes: production frontend build and running FastAPI test server with deterministic fixture data.
 - Produces: browser assertions and laptop/compact screenshots for all three views.
 
@@ -140,10 +154,12 @@
 ### Task 8: Offline packaging, deployment recipe, and acceptance report
 
 **Files:**
+
 - Create: `README.md`, `THIRD_PARTY_NOTICES.md`, `deploy/reefvision-edge.service`, `scripts/build_offline_bundle.ps1`, `scripts/build_offline_bundle.sh`, `docs/verification-report.md`
 - Modify: `pyproject.toml`, `src/reefvision_edge/app.py`
 
 **Interfaces:**
+
 - Produces: `reefvision-edge` console command, reproducible environment/setup/deployment steps, offline wheel/npm preparation guidance, SSH tunnel and LAN auth instructions, model export/registration recipe, and evidence matrix.
 
 - [ ] Add packaging smoke tests for clean temporary data startup with bundled frontend and local fixtures.

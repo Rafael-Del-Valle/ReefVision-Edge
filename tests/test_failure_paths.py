@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
+
+from tests.test_sessions import prepared_services
 
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
-from reefvision_edge.preview import PreviewStore
 from reefvision_edge.sessions import SessionRunner, SessionService
-from tests.test_sessions import prepared_services
 
 
 def test_unavailable_source_finishes_failed_with_actionable_error(tmp_path: Path) -> None:
@@ -33,7 +32,7 @@ def test_unavailable_source_finishes_failed_with_actionable_error(tmp_path: Path
 def test_database_write_failure_preserves_earlier_frames_and_fails_session(
     tmp_path: Path,
 ) -> None:
-    database, model, source, previews, runner, service = prepared_services(tmp_path)
+    database, model, source, _previews, runner, service = prepared_services(tmp_path)
     with database.connect() as connection:
         connection.executescript(
             """

@@ -153,7 +153,11 @@ class ModelRegistry:
         inputs = session.get_inputs()
         outputs = session.get_outputs()
         expected_input = [1, 3, metadata.input_height, metadata.input_width]
-        if len(inputs) != 1 or inputs[0].shape != expected_input or inputs[0].type != "tensor(float)":
+        if (
+            len(inputs) != 1
+            or inputs[0].shape != expected_input
+            or inputs[0].type != "tensor(float)"
+        ):
             raise ModelRegistrationError(
                 f"Model input must be float32 NCHW with fixed shape {expected_input}."
             )

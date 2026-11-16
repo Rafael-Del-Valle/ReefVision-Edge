@@ -11,7 +11,7 @@ export default defineConfig({
     exclude: ["tests/e2e/**", "**/node_modules/**", "**/dist/**"],
   },
   build: {
-    outDir: "dist",
+    outDir: "../src/reefvision_edge/static",
     emptyOutDir: true,
   },
 });

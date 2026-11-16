@@ -7,12 +7,12 @@ from io import BytesIO
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-
-from reefvision_edge.app import create_app
-from reefvision_edge.config import Settings
 from tests.fixtures.build_tiny_model import build_tiny_yolo_model
 from tests.fixtures.build_video import build_mjpeg_video
 from tests.test_model_registry import valid_metadata
+
+from reefvision_edge.app import create_app
+from reefvision_edge.config import Settings
 
 
 def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:

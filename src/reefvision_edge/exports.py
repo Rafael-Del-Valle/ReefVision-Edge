@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
 import json
 import os
@@ -9,6 +8,7 @@ import re
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from reefvision_edge.db import Database
 from reefvision_edge.domain import ModelMetadata
@@ -92,6 +92,17 @@ class ExportService:
                 """,
                 (session[2],),
             ).fetchone()
+            frame_rows = connection.execute(
+                """
+                SELECT f.frame_index, f.timestamp_ms, f.width, f.height,
+                    f.latency_ms, COUNT(d.id)
+                FROM frames f LEFT JOIN detections d ON d.frame_id = f.id
+                WHERE f.session_id = ?
+                GROUP BY f.id
+                ORDER BY f.frame_index
+                """,
+                (session_id,),
+            ).fetchall()
             rows = connection.execute(
                 """
                 SELECT f.frame_index, f.timestamp_ms, f.width, f.height,
@@ -108,6 +119,11 @@ class ExportService:
         settings = json.loads(session[4])
         metadata = ModelMetadata.model_validate_json(model[4])
         source_metadata = json.loads(source[4])
+        source_width = source_metadata.get("width")
+        source_height = source_metadata.get("height")
+        if frame_rows:
+            source_width = source_width or frame_rows[0][2]
+            source_height = source_height or frame_rows[0][3]
         manifest_value = {
             "schema": "reefvision-edge-session/v1",
             "exported_at": session[14] or session[13],
@@ -145,11 +161,22 @@ class ExportService:
                 "container": source_metadata.get("container"),
                 "codec": source_metadata.get("codec"),
                 "dimensions": {
-                    "width": source_metadata.get("width"),
-                    "height": source_metadata.get("height"),
+                    "width": source_width,
+                    "height": source_height,
                 },
                 "reported_fps": source_metadata.get("fps"),
             },
+            "frames": [
+                {
+                    "frame_index": row[0],
+                    "timestamp_ms": row[1],
+                    "width": row[2],
+                    "height": row[3],
+                    "latency_ms": row[4],
+                    "detection_count": row[5],
+                }
+                for row in frame_rows
+            ],
             "sampling": {
                 "sample_every": int(settings["sample_every"]),
                 "first_frame_index": 0,
@@ -218,21 +245,40 @@ def validate_export(path: Path) -> ExportSummary:
     session = manifest.get("session", {})
     model = manifest.get("model", {})
     source = manifest.get("source", {})
+    frames = manifest.get("frames", [])
     class_map = model.get("class_map", {})
     if not re.fullmatch(r"[0-9a-f]{64}", str(model.get("sha256", ""))):
         raise ExportError("Model SHA-256 is missing or invalid.")
     if not re.fullmatch(r"[0-9a-f]{64}", str(model.get("metadata_sha256", ""))):
         raise ExportError("Metadata SHA-256 is missing or invalid.")
-    width = int(source.get("dimensions", {}).get("width", 0))
-    height = int(source.get("dimensions", {}).get("height", 0))
+    if not isinstance(frames, list):
+        raise ExportError("Frame records are missing or invalid.")
+    frame_map: dict[int, dict[str, Any]] = {}
+    for frame in frames:
+        if not isinstance(frame, dict):
+            raise ExportError("Frame record is invalid.")
+        frame_index = int(frame.get("frame_index", -1))
+        if frame_index < 0 or frame_index in frame_map:
+            raise ExportError("Frame indices must be unique non-negative integers.")
+        if int(frame.get("width", 0)) <= 0 or int(frame.get("height", 0)) <= 0:
+            raise ExportError("Frame dimensions must be positive.")
+        frame_map[frame_index] = frame
+    source_width = int(source.get("dimensions", {}).get("width") or 0)
+    source_height = int(source.get("dimensions", {}).get("height") or 0)
+    if frames and (source_width <= 0 or source_height <= 0):
+        raise ExportError("Source dimensions are missing or invalid.")
     session_id = str(session.get("id", ""))
-    frame_indices: set[int] = set()
+    detection_counts: dict[int, int] = {}
     for row in rows:
         if row.get("schema") != "reefvision-edge-detection/v1":
             raise ExportError("Unsupported detection row schema.")
         if row.get("session_id") != session_id:
             raise ExportError("Detection row belongs to a different session.")
-        frame_indices.add(int(row["frame_index"]))
+        frame_index = int(row["frame_index"])
+        frame = frame_map.get(frame_index)
+        if frame is None:
+            raise ExportError("Detection row references an unknown frame.")
+        detection_counts[frame_index] = detection_counts.get(frame_index, 0) + 1
         class_id = int(row["class_id"])
         if class_map.get(str(class_id)) != row["class_name"]:
             raise ExportError("Detection class does not match the manifest class map.")
@@ -242,15 +288,22 @@ def validate_export(path: Path) -> ExportSummary:
         )
         if not 0 <= score <= 1:
             raise ExportError("Detection score is outside [0, 1].")
+        width = int(frame["width"])
+        height = int(frame["height"])
+        if int(row["source_width"]) != width or int(row["source_height"]) != height:
+            raise ExportError("Detection dimensions do not match the frame record.")
         if not (0 <= x_min < x_max <= width and 0 <= y_min < y_max <= height):
             raise ExportError("Detection coordinates are outside source dimensions.")
     if len(rows) != int(session.get("detection_count", -1)):
         raise ExportError("Detection count does not match the manifest.")
-    if len(frame_indices) != int(session.get("frame_count", -1)):
+    if len(frame_map) != int(session.get("frame_count", -1)):
         raise ExportError("Frame count does not match the manifest.")
+    for frame_index, frame in frame_map.items():
+        if int(frame.get("detection_count", -1)) != detection_counts.get(frame_index, 0):
+            raise ExportError("Per-frame detection count does not match the manifest.")
     return ExportSummary(
         session_id=session_id,
-        frame_count=len(frame_indices),
+        frame_count=len(frame_map),
         detection_count=len(rows),
         class_names=tuple(class_map[str(index)] for index in range(len(class_map))),
     )

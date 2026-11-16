@@ -6,6 +6,7 @@ import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import cv2
 import numpy as np
@@ -100,7 +101,7 @@ class RecordedVideoSource:
                     yield SourceFrame(
                         frame_index=frame_index,
                         timestamp_ms=timestamp_ms,
-                        frame=frame,
+                        frame=cast(NDArray[np.uint8], frame),
                     )
                 frame_index += 1
         finally:
@@ -156,7 +157,7 @@ class V4L2CameraSource:
                     if not readable:
                         failure.append(f"Camera device {self.device} stopped delivering frames.")
                         return
-                    latest.put(frame)
+                    latest.put(cast(NDArray[np.uint8], frame))
             finally:
                 producer_done.set()
 
@@ -169,7 +170,9 @@ class V4L2CameraSource:
                     frame = latest.get(timeout=0.25)
                 except queue.Empty:
                     if producer_done.is_set():
-                        raise SourceError(failure[0] if failure else "Camera capture ended.")
+                        raise SourceError(
+                            failure[0] if failure else "Camera capture ended."
+                        ) from None
                     continue
                 self.dropped_frames = latest.dropped
                 yield SourceFrame(frame_index=frame_index, timestamp_ms=None, frame=frame)

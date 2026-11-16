@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.fixtures.build_tiny_model import build_tiny_yolo_model
 
 from reefvision_edge.db import Database
 from reefvision_edge.domain import ModelMetadata
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
-from tests.fixtures.build_tiny_model import build_tiny_yolo_model
 
 
 def valid_metadata() -> dict[str, object]:

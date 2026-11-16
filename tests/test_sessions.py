@@ -7,6 +7,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from tests.fixtures.build_tiny_model import build_tiny_yolo_model
+from tests.fixtures.build_video import build_mjpeg_video
+from tests.test_model_registry import valid_metadata
 
 from reefvision_edge.db import Database
 from reefvision_edge.inference import YoloOnnxDetector
@@ -14,9 +17,6 @@ from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
 from reefvision_edge.preview import PreviewStore
 from reefvision_edge.sessions import SessionRunner, SessionService
-from tests.fixtures.build_tiny_model import build_tiny_yolo_model
-from tests.fixtures.build_video import build_mjpeg_video
-from tests.test_model_registry import valid_metadata
 
 
 def prepared_services(tmp_path: Path, *, frame_count: int = 5):
@@ -51,7 +51,10 @@ def test_recorded_session_persists_metrics_detections_and_preview(tmp_path: Path
     assert completed.average_latency_ms is not None and completed.average_latency_ms >= 0
     with database.connect() as connection:
         frames = connection.execute(
-            "SELECT frame_index, timestamp_ms FROM frames WHERE session_id = ? ORDER BY frame_index",
+            """
+            SELECT frame_index, timestamp_ms
+            FROM frames WHERE session_id = ? ORDER BY frame_index
+            """,
             (session.id,),
         ).fetchall()
         first_box = connection.execute(

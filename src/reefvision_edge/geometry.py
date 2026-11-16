@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import cv2
 import numpy as np
@@ -30,7 +31,9 @@ def letterbox(
     vertical = height - resized_height
     left = horizontal // 2
     top = vertical // 2
-    transformed = cv2.copyMakeBorder(
+    transformed = cast(
+        NDArray[np.uint8],
+        cv2.copyMakeBorder(
         resized,
         top,
         vertical - top,
@@ -38,6 +41,7 @@ def letterbox(
         horizontal - left,
         cv2.BORDER_CONSTANT,
         value=(114, 114, 114),
+        ),
     )
     mapping = LetterboxMapping(
         source_width=source_width,

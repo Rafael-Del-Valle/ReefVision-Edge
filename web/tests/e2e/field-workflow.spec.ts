@@ -7,18 +7,50 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.resolve(here, "../../.e2e-fixtures");
 const screenshots = path.resolve(here, "../../../docs/screenshots");
 
+async function stabilizeScreenshotText(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    const previewTitle = document.querySelector(".preview-panel h3");
+    if (previewTitle) previewTitle.textContent = "Session sample01";
+    const selectedSession =
+      document.querySelector<HTMLSelectElement>("#active-session");
+    if (selectedSession?.selectedOptions[0]) {
+      selectedSession.selectedOptions[0].textContent = "sample01 · completed";
+    }
+    const values = ["8.0 FPS", "12.5 ms", "3", "6"];
+    document.querySelectorAll(".metric strong").forEach((element, index) => {
+      if (values[index]) element.textContent = values[index];
+    });
+    document.querySelectorAll("time").forEach((element) => {
+      element.textContent = "11/16/2026, 12:00:00 PM";
+    });
+    document.querySelectorAll(".session-stats strong").forEach((element) => {
+      element.textContent = "12.5";
+    });
+  });
+}
+
 test.describe.serial("ReefVision-Edge field workflow", () => {
-  test("registers local inputs, runs inference, reloads, and exports", async ({ page }) => {
+  test("registers local inputs, runs inference, reloads, and exports", async ({
+    page,
+  }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Field monitor" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Field monitor" }),
+    ).toBeVisible();
     await page.getByText("Register model or source").click();
 
-    await page.getByLabel("ONNX file").setInputFiles(path.join(fixtures, "tiny.onnx"));
-    await page.getByLabel("Metadata JSON").setInputFiles(path.join(fixtures, "metadata.json"));
+    await page
+      .getByLabel("ONNX file")
+      .setInputFiles(path.join(fixtures, "tiny.onnx"));
+    await page
+      .getByLabel("Metadata JSON")
+      .setInputFiles(path.join(fixtures, "metadata.json"));
     await page.getByRole("button", { name: "Register model" }).click();
     await expect(page.getByLabel("Model")).toContainText("Tiny Coral Detector");
 
-    await page.getByLabel("Video file").setInputFiles(path.join(fixtures, "reef.avi"));
+    await page
+      .getByLabel("Video file")
+      .setInputFiles(path.join(fixtures, "reef.avi"));
     await page.getByRole("button", { name: "Import video" }).click();
     await expect(page.getByLabel("Source")).toContainText("reef.avi");
 
@@ -30,7 +62,9 @@ test.describe.serial("ReefVision-Edge field workflow", () => {
     const metrics = page.getByLabel("Session metrics");
     await expect(metrics).toContainText("3");
     await expect(metrics).toContainText("6");
-    await expect(page.getByAltText("Latest inference frame with detection overlays")).toBeVisible();
+    await expect(
+      page.getByAltText("Latest inference frame with detection overlays"),
+    ).toBeVisible();
 
     await page.reload();
     await expect(page.getByRole("status", { name: "completed" })).toBeVisible();
@@ -42,18 +76,33 @@ test.describe.serial("ReefVision-Edge field workflow", () => {
     expect(download.suggestedFilename()).toMatch(/^reefvision-edge-.*\.zip$/);
   });
 
-  test("matches ReefVision semantic colors in computed styles", async ({ page }) => {
+  test("matches ReefVision semantic colors in computed styles", async ({
+    page,
+  }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Field monitor" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Field monitor" }),
+    ).toBeVisible();
 
     const tokens = await page.evaluate(() => {
       const style = getComputedStyle(document.documentElement);
       return Object.fromEntries(
         [
-          "--rv-bg", "--rv-bg-raised", "--rv-panel", "--rv-panel-soft",
-          "--rv-border", "--rv-border-strong", "--rv-accent", "--rv-accent-strong",
-          "--rv-text", "--rv-muted", "--rv-muted-strong", "--rv-success",
-          "--rv-warning", "--rv-danger", "--rv-info",
+          "--rv-bg",
+          "--rv-bg-raised",
+          "--rv-panel",
+          "--rv-panel-soft",
+          "--rv-border",
+          "--rv-border-strong",
+          "--rv-accent",
+          "--rv-accent-strong",
+          "--rv-text",
+          "--rv-muted",
+          "--rv-muted-strong",
+          "--rv-success",
+          "--rv-warning",
+          "--rv-danger",
+          "--rv-info",
         ].map((name) => [name, style.getPropertyValue(name).trim()]),
       );
     });
@@ -100,26 +149,59 @@ test.describe.serial("ReefVision-Edge field workflow", () => {
         document.body.append(clone);
       }
     });
-    await expect(page.locator("#theme-running")).toHaveCSS("color", "rgb(143, 199, 255)");
-    await expect(page.locator("#theme-interrupted")).toHaveCSS("color", "rgb(243, 201, 107)");
-    await expect(page.locator("#theme-failed")).toHaveCSS("color", "rgb(255, 143, 135)");
+    await expect(page.locator("#theme-running")).toHaveCSS(
+      "color",
+      "rgb(143, 199, 255)",
+    );
+    await expect(page.locator("#theme-interrupted")).toHaveCSS(
+      "color",
+      "rgb(243, 201, 107)",
+    );
+    await expect(page.locator("#theme-failed")).toHaveCSS(
+      "color",
+      "rgb(255, 143, 135)",
+    );
   });
 
   test("captures laptop and compact views", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Field monitor" })).toBeVisible();
-    await page.screenshot({ path: path.join(screenshots, "monitor-laptop.png"), fullPage: true });
+    await expect(
+      page.getByRole("heading", { name: "Field monitor" }),
+    ).toBeVisible();
+    await stabilizeScreenshotText(page);
+    await page.screenshot({
+      path: path.join(screenshots, "monitor-laptop.png"),
+      fullPage: true,
+    });
     await page.getByRole("tab", { name: "Sessions" }).click();
-    await page.screenshot({ path: path.join(screenshots, "sessions-laptop.png"), fullPage: true });
+    await stabilizeScreenshotText(page);
+    await page.screenshot({
+      path: path.join(screenshots, "sessions-laptop.png"),
+      fullPage: true,
+    });
     await page.getByRole("tab", { name: "Settings" }).click();
-    await page.screenshot({ path: path.join(screenshots, "settings-laptop.png"), fullPage: true });
+    await page.screenshot({
+      path: path.join(screenshots, "settings-laptop.png"),
+      fullPage: true,
+    });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("tab", { name: "Monitor" }).click();
-    await page.screenshot({ path: path.join(screenshots, "monitor-compact.png"), fullPage: true });
+    await stabilizeScreenshotText(page);
+    await page.screenshot({
+      path: path.join(screenshots, "monitor-compact.png"),
+      fullPage: true,
+    });
     await page.getByRole("tab", { name: "Sessions" }).click();
-    await page.screenshot({ path: path.join(screenshots, "sessions-compact.png"), fullPage: true });
+    await stabilizeScreenshotText(page);
+    await page.screenshot({
+      path: path.join(screenshots, "sessions-compact.png"),
+      fullPage: true,
+    });
     await page.getByRole("tab", { name: "Settings" }).click();
-    await page.screenshot({ path: path.join(screenshots, "settings-compact.png"), fullPage: true });
+    await page.screenshot({
+      path: path.join(screenshots, "settings-compact.png"),
+      fullPage: true,
+    });
   });
 });

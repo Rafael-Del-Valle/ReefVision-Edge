@@ -7,9 +7,9 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from tests.test_sessions import prepared_services
 
 from reefvision_edge.exports import ExportError, ExportService, validate_export
-from tests.test_sessions import prepared_services
 
 
 def completed_export(tmp_path: Path):
@@ -43,6 +43,8 @@ def test_export_contains_versioned_provenance_and_original_coordinate_csv(
     assert manifest["source"]["sha256"] == source.sha256
     assert manifest["source"]["dimensions"] == {"width": 160, "height": 90}
     assert manifest["thresholds"] == {"confidence": 0.5, "iou": 0.45}
+    assert [frame["frame_index"] for frame in manifest["frames"]] == [0, 2, 4]
+    assert [frame["detection_count"] for frame in manifest["frames"]] == [2, 2, 2]
     assert len(rows) == 6
     assert rows[0]["schema"] == "reefvision-edge-detection/v1"
     assert rows[0]["frame_index"] == "0"
@@ -82,6 +84,31 @@ def test_round_trip_validator_checks_counts_coordinates_and_hashes(tmp_path: Pat
     assert summary.frame_count == 3
     assert summary.detection_count == 6
     assert summary.class_names == ("coral", "fish")
+
+
+def test_round_trip_preserves_frames_with_no_detections(tmp_path: Path) -> None:
+    database, _, source, session, exporter = completed_export(tmp_path)
+    with database.connect() as connection:
+        connection.execute("DELETE FROM detections")
+        connection.execute(
+            "UPDATE sessions SET detection_count = 0 WHERE id = ?", (session.id,)
+        )
+        connection.execute(
+            "UPDATE sources SET metadata_json = ? WHERE id = ?",
+            (json.dumps({"timestamp_basis": "capture order"}), source.id),
+        )
+
+    archive = exporter.build_zip(session.id)
+    summary = validate_export(archive)
+
+    assert summary.frame_count == 3
+    assert summary.detection_count == 0
+    with zipfile.ZipFile(archive) as bundle:
+        manifest = json.loads(bundle.read("manifest.json"))
+        rows = list(csv.DictReader(io.StringIO(bundle.read("detections.csv").decode())))
+    assert manifest["source"]["dimensions"] == {"width": 160, "height": 90}
+    assert [frame["detection_count"] for frame in manifest["frames"]] == [0, 0, 0]
+    assert rows == []
 
 
 def test_validator_rejects_unsafe_zip_member(tmp_path: Path) -> None:

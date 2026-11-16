@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from reefvision_edge.config import Settings
+from reefvision_edge.domain import RegisteredModel
 from reefvision_edge.exports import ExportError, ExportService
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
@@ -36,8 +37,7 @@ def error_response(status_code: int, code: str, message: str) -> JSONResponse:
     )
 
 
-def model_response(model: object) -> dict[str, object]:
-    registered = model
+def model_response(registered: RegisteredModel) -> dict[str, object]:
     return {
         "id": registered.id,
         "name": registered.metadata.name,

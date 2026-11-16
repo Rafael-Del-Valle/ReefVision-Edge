@@ -87,7 +87,9 @@ test("shows prominent model source sampling and run controls", async () => {
   installFetch();
   render(<App />);
 
-  expect(await screen.findByRole("heading", { name: "Field monitor" })).toBeVisible();
+  expect(
+    await screen.findByRole("heading", { name: "Field monitor" }),
+  ).toBeVisible();
   expect(screen.getByLabelText("Model")).toHaveValue("model-1");
   expect(screen.getByLabelText("Source")).toHaveValue("source-1");
   expect(screen.getByLabelText("Sample every N frames")).toHaveValue(1);
@@ -108,13 +110,18 @@ test("navigates among monitor sessions and settings with runtime state", async (
   expect(screen.getByRole("status", { name: "completed" })).toBeVisible();
 
   await user.click(screen.getByRole("tab", { name: "Settings" }));
-  expect(screen.getByRole("heading", { name: "Station settings" })).toBeVisible();
+  expect(
+    screen.getByRole("heading", { name: "Station settings" }),
+  ).toBeVisible();
   expect(screen.getByText("CPUExecutionProvider")).toBeVisible();
   expect(screen.getByText("Loopback only")).toBeVisible();
 });
 
 test("reports an actionable station loading failure", async () => {
-  vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("offline"))));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.reject(new Error("offline"))),
+  );
   render(<App />);
 
   expect(await screen.findByRole("alert")).toHaveTextContent(

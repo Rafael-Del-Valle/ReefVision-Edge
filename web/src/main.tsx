@@ -8,4 +8,8 @@ import "./styles/app.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("ReefVision-Edge root element was not found.");
 
-createRoot(root).render(<StrictMode><App /></StrictMode>);
+createRoot(root).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);

@@ -5,13 +5,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from tests.fixtures.build_tiny_model import build_tiny_yolo_model
+from tests.test_model_registry import valid_metadata
 
 from reefvision_edge.db import Database
 from reefvision_edge.geometry import letterbox, restore_box
 from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.model_registry import ModelRegistry
-from tests.fixtures.build_tiny_model import build_tiny_yolo_model
-from tests.test_model_registry import valid_metadata
 
 
 def test_letterbox_round_trip_restores_original_coordinates() -> None:

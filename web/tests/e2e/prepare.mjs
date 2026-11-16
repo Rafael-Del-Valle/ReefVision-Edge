@@ -12,7 +12,10 @@ const fixtureDir = path.join(webRoot, ".e2e-fixtures");
 if (path.dirname(dataDir) !== path.join(webRoot, "test-results")) {
   throw new Error(`Refusing to replace unexpected data path: ${dataDir}`);
 }
-if (path.dirname(fixtureDir) !== webRoot || path.basename(fixtureDir) !== ".e2e-fixtures") {
+if (
+  path.dirname(fixtureDir) !== webRoot ||
+  path.basename(fixtureDir) !== ".e2e-fixtures"
+) {
   throw new Error(`Refusing to replace unexpected fixture path: ${fixtureDir}`);
 }
 rmSync(dataDir, { recursive: true, force: true });
@@ -25,5 +28,7 @@ const result = spawnSync(
   { cwd: repoRoot, encoding: "utf8" },
 );
 if (result.status !== 0) {
-  throw new Error(`Fixture generation failed:\n${result.stdout}\n${result.stderr}`);
+  throw new Error(
+    `Fixture generation failed:\n${result.stdout}\n${result.stderr}`,
+  );
 }

@@ -5,9 +5,10 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Callable
+from pathlib import Path
 
 from reefvision_edge.db import Database
 from reefvision_edge.domain import RegisteredModel
@@ -15,8 +16,6 @@ from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
 from reefvision_edge.preview import PreviewStore
-from pathlib import Path
-
 from reefvision_edge.sources import RecordedVideoSource, SourceError, V4L2CameraSource
 
 
@@ -124,7 +123,14 @@ class SessionRunner:
                 raise SourceError(f"Unsupported source kind {source_record['kind']}.")
             for source_frame in source_frames:
                 if canceled.is_set():
-                    self._finish(session_id, "canceled", processed, detection_count, started, latency_total)
+                    self._finish(
+                        session_id,
+                        "canceled",
+                        processed,
+                        detection_count,
+                        started,
+                        latency_total,
+                    )
                     return
                 result = detector.predict(source_frame.frame)
                 frame_id = str(uuid.uuid4())
@@ -228,7 +234,10 @@ class SessionRunner:
         started: float,
         latency_total: float,
     ) -> None:
-        self._update_progress(session_id, processed, detections, started, latency_total) if processed else None
+        if processed:
+            self._update_progress(
+                session_id, processed, detections, started, latency_total
+            )
         with self.database.connect() as connection:
             connection.execute(
                 """

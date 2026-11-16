@@ -42,7 +42,10 @@ export const api = {
   importVideo: (video: File): Promise<SourceRecord> => {
     const body = new FormData();
     body.append("video", video);
-    return request<SourceRecord>("/api/sources/video", { method: "POST", body });
+    return request<SourceRecord>("/api/sources/video", {
+      method: "POST",
+      body,
+    });
   },
   registerCamera: (device: string) =>
     request<SourceRecord>("/api/sources/camera", {

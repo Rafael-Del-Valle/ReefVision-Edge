@@ -37,7 +37,7 @@ class ModelMetadata(BaseModel):
     iou_threshold: float = Field(default=0.45, ge=0, le=1)
 
     @model_validator(mode="after")
-    def validate_class_map(self) -> "ModelMetadata":
+    def validate_class_map(self) -> ModelMetadata:
         if sorted(self.classes) != list(range(len(self.classes))):
             raise ValueError("Class IDs must be contiguous integers starting at zero.")
         if any(not name.strip() for name in self.classes.values()):

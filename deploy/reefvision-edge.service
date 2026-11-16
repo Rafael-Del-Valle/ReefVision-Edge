@@ -1,0 +1,24 @@
+[Unit]
+Description=ReefVision-Edge offline field inference
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+User=reefvision-edge
+Group=reefvision-edge
+WorkingDirectory=/opt/reefvision-edge
+EnvironmentFile=/etc/reefvision-edge.env
+ExecStart=/opt/reefvision-edge/.venv/bin/reefvision-edge
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/reefvision-edge
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

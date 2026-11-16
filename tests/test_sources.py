@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from tests.fixtures.build_video import build_mjpeg_video
 
 from reefvision_edge.db import Database
 from reefvision_edge.media_store import MediaStore
@@ -17,7 +18,6 @@ from reefvision_edge.sources import (
     V4L2CameraSource,
     probe_video,
 )
-from tests.fixtures.build_video import build_mjpeg_video
 
 
 def media_store(tmp_path: Path) -> MediaStore:
@@ -64,7 +64,9 @@ def test_probe_rejects_unreadable_video(tmp_path: Path) -> None:
         probe_video(broken)
 
 
-def test_camera_reports_host_and_device_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_camera_reports_host_and_device_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     if platform.system() != "Linux":
         with pytest.raises(SourceError, match="Linux"):
             V4L2CameraSource(Path("/dev/video0"))

@@ -1,10 +1,5 @@
 export type SessionStatus =
-  | "queued"
-  | "running"
-  | "completed"
-  | "canceled"
-  | "interrupted"
-  | "failed";
+  "queued" | "running" | "completed" | "canceled" | "interrupted" | "failed";
 
 export interface ModelRecord {
   id: string;
