@@ -54,7 +54,7 @@ Desktop ReefVision trains Ultralytics YOLO checkpoints but does not provide a di
 
 SQLite stores model/source provenance, settings, state, metrics, frame references, and detections. States are `queued`, `running`, `completed`, `canceled`, `interrupted`, and `failed`. Startup converts stale `running` rows to `interrupted`. Camera removal, decoder failure, disk-full errors, cancellation, and service restart produce consistent final state and preserve committed detections.
 
-Exports contain `manifest.json` with schema `reefvision-edge-session/v1` and `detections.csv`. Both include model/source references, class map, source dimensions, frame index/timestamp basis, original-coordinate boxes, score, confidence/IoU thresholds, sample interval, and the runtime-selected execution-provider chain. A round-trip validator checks consistency.
+Exports contain `manifest.json` with schema `reefvision-edge-session/v1` and `detections.csv`. Both include model/source references, class map, source dimensions, frame index/timestamp basis, original-coordinate boxes, score, confidence/IoU thresholds, sample interval, and graph-assigned execution providers with node counts/fallback made explicit. A round-trip validator checks consistency.
 
 Desktop ReefVision at the pinned commit imports image-associated COCO/YOLO annotations and video tracks, but it has no contract for frame-level Edge detections. v0.1 therefore ships its native versioned export and documents remaining desktop import work rather than claiming compatibility.
 

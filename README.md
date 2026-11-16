@@ -10,7 +10,7 @@ The Python service and React dashboard are served from one origin. It binds to `
 
 - Local `.onnx` object detectors with explicit class, input, preprocessing, and output metadata.
 - `ultralytics_yolo_detect_v1`: fixed NCHW RGB float32 input, centered letterbox, `[1, 4 + classes, candidates]` output, `xywh` input-pixel boxes, and per-class confidence values.
-- ONNX Runtime provider detection with the runtime-selected provider chain stored in every session/export. CPU is the portable baseline; ONNX Runtime may still assign individual nodes to a fallback provider.
+- ONNX Runtime graph-assignment evidence stored in every session/export, including per-provider node counts and explicit CPU fallback. CPU is the portable baseline; runtimes that cannot expose assignment evidence are labeled `assignment unavailable` instead of making an acceleration claim.
 - Immutable copies of local AVI, MP4, MOV, M4V, and MKV uploads, subject to the codecs in the installed OpenCV/FFmpeg build.
 - Linux V4L2 camera paths such as `/dev/video0`, with a bounded newest-frame queue.
 - Deterministic recorded sampling: frame zero and every Nth frame; timestamps use `frame_index / reported_fps` when constant-rate metadata exists.

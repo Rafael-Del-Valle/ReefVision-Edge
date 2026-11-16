@@ -11,7 +11,7 @@ from tests.test_model_registry import valid_metadata
 
 from reefvision_edge.db import Database
 from reefvision_edge.geometry import letterbox, restore_box
-from reefvision_edge.inference import YoloOnnxDetector
+from reefvision_edge.inference import YoloOnnxDetector, provider_assignment_summary
 from reefvision_edge.model_registry import ModelRegistry
 
 
@@ -77,3 +77,37 @@ def test_detector_reselects_provider_when_registration_snapshot_is_stale(
     )
 
     assert "CPUExecutionProvider" in detector.provider
+
+
+def test_provider_assignment_summary_makes_cpu_fallback_explicit() -> None:
+    class Assignment:
+        def __init__(self, name: str, nodes: int) -> None:
+            self.ep_name = name
+            self._nodes = [object()] * nodes
+
+        def get_nodes(self) -> list[object]:
+            return self._nodes
+
+    class Session:
+        def get_provider_graph_assignment_info(self) -> list[Assignment]:
+            return [
+                Assignment("TensorrtExecutionProvider", 42),
+                Assignment("CPUExecutionProvider", 3),
+            ]
+
+        def get_providers(self) -> list[str]:
+            return ["TensorrtExecutionProvider", "CPUExecutionProvider"]
+
+    assert provider_assignment_summary(Session()) == (
+        "TensorrtExecutionProvider (42 nodes) -> "
+        "CPUExecutionProvider fallback (3 nodes)"
+    )
+
+    class CpuSession(Session):
+        def get_provider_graph_assignment_info(self) -> list[Assignment]:
+            return [Assignment("CPUExecutionProvider", 45)]
+
+        def get_providers(self) -> list[str]:
+            return ["CPUExecutionProvider"]
+
+    assert provider_assignment_summary(CpuSession()) == "CPUExecutionProvider (45 nodes)"

@@ -25,7 +25,7 @@ Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` lo
 
 ## Automated evidence
 
-- Backend: 45 tests pass, including model/metadata rejection and upload limits, run-time provider reselection, deterministic ONNX inference, letterbox reversal/clipping, media copying/probing, early decoder failure, unavailable camera, bounded work/cancellation/shutdown, atomic counters, stale-run reconciliation, simulated disk/database-full failure, zero-detection export round trip, API workflow, packaged assets, CLI LAN safety, and fresh-app session/preview reopen/export.
+- Backend: 46 tests pass, including model/metadata rejection and upload limits, run-time provider reselection and graph-assignment/fallback reporting, deterministic ONNX inference, letterbox reversal/clipping, media copying/probing, early decoder failure, unavailable camera, bounded work/cancellation/shutdown, atomic counters, stale-run reconciliation, simulated disk/database-full failure, zero-detection export round trip, API workflow, packaged assets, CLI LAN safety, and fresh-app session/preview reopen/export.
 - Frontend: 4 Vitest component tests pass.
 - TypeScript: clean project typecheck.
 - Production dashboard: Vite build succeeds with bundled local assets.

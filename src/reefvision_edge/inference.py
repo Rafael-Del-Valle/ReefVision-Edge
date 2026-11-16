@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
+from typing import Protocol
 
 import numpy as np
 import onnxruntime as ort
@@ -9,6 +11,44 @@ from numpy.typing import NDArray
 from reefvision_edge.domain import Detection, InferenceResult, RegisteredModel
 from reefvision_edge.geometry import letterbox, restore_box
 from reefvision_edge.model_registry import select_provider
+
+
+class _AssignedSubgraph(Protocol):
+    ep_name: str
+
+    def get_nodes(self) -> list[object]: ...
+
+
+class _AssignmentSession(Protocol):
+    def get_provider_graph_assignment_info(self) -> list[_AssignedSubgraph]: ...
+
+    def get_providers(self) -> list[str]: ...
+
+
+def provider_assignment_summary(session: _AssignmentSession) -> str:
+    try:
+        assignments = session.get_provider_graph_assignment_info()
+    except (AttributeError, RuntimeError):
+        providers = session.get_providers()
+        return (
+            f"assignment unavailable; configured {' -> '.join(providers)}"
+            if providers
+            else "assignment unavailable"
+        )
+    counts: Counter[str] = Counter()
+    for subgraph in assignments:
+        counts[subgraph.ep_name] += len(subgraph.get_nodes())
+    if not counts:
+        providers = session.get_providers()
+        return providers[0] if providers else "no executable graph nodes"
+    ordered = [provider for provider in session.get_providers() if counts[provider]]
+    ordered.extend(provider for provider in counts if provider not in ordered)
+    accelerated = any(provider != "CPUExecutionProvider" for provider in ordered)
+    parts = []
+    for provider in ordered:
+        fallback = " fallback" if provider == "CPUExecutionProvider" and accelerated else ""
+        parts.append(f"{provider}{fallback} ({counts[provider]} nodes)")
+    return " -> ".join(parts)
 
 
 def _iou(
@@ -46,11 +86,16 @@ class YoloOnnxDetector:
     def __init__(self, model: RegisteredModel) -> None:
         self.model = model
         selected_provider = select_provider(ort.get_available_providers())
+        options = ort.SessionOptions()
+        if hasattr(ort.InferenceSession, "get_provider_graph_assignment_info"):
+            options.add_session_config_entry(
+                "session.record_ep_graph_assignment_info", "1"
+            )
         self.session = ort.InferenceSession(
-            str(model.path), providers=[selected_provider]
+            str(model.path), sess_options=options, providers=[selected_provider]
         )
         self.input_name = self.session.get_inputs()[0].name
-        self.provider = " -> ".join(self.session.get_providers())
+        self.provider = provider_assignment_summary(self.session)
 
     def predict(self, frame: NDArray[np.uint8]) -> InferenceResult:
         started = time.perf_counter()
@@ -63,6 +108,7 @@ class YoloOnnxDetector:
             rgb.transpose(2, 0, 1)[None].astype(np.float32) / 255.0
         )
         output = self.session.run(None, {self.input_name: input_tensor})[0][0].T
+        self.provider = provider_assignment_summary(self.session)
         detections: list[Detection] = []
         for candidate in output:
             scores = candidate[4:]
