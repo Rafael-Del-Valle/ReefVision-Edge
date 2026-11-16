@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from importlib.util import find_spec
+from importlib.metadata import PackageNotFoundError, distribution
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
@@ -19,20 +19,26 @@ for package in ("onnxruntime", "cv2"):
     hiddenimports.extend(package_hidden)
 
 for package in (
-    "nvidia.cublas",
-    "nvidia.cuda_nvrtc",
-    "nvidia.cuda_runtime",
-    "nvidia.cudnn",
-    "nvidia.cufft",
-    "nvidia.curand",
-    "nvidia.nvjitlink",
+    "nvidia-cublas",
+    "nvidia-cuda-nvrtc",
+    "nvidia-cuda-runtime",
+    "nvidia-cudnn-cu13",
+    "nvidia-cufft",
+    "nvidia-curand",
+    "nvidia-nvjitlink",
 ):
-    if find_spec(package) is None:
+    try:
+        package_distribution = distribution(package)
+    except PackageNotFoundError:
         continue
-    package_datas, package_binaries, package_hidden = collect_all(package)
-    datas.extend(package_datas)
-    binaries.extend(package_binaries)
-    hiddenimports.extend(package_hidden)
+    for package_file in package_distribution.files or ():
+        if package_file.suffix.lower() == ".dll":
+            binaries.append(
+                (
+                    str(package_distribution.locate_file(package_file)),
+                    package_file.parent.as_posix(),
+                )
+            )
 
 datas.extend(
     [

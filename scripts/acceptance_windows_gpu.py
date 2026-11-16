@@ -5,17 +5,24 @@ import csv
 import io
 import json
 import subprocess
+import sys
 import time
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import httpx
-from tests.fixtures.build_gpu_acceptance_model import build_gpu_acceptance_model
-from tests.fixtures.build_video import build_mjpeg_video
 
-from reefvision_edge.domain import Detection
-from reefvision_edge.gpu_acceptance import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from tests.fixtures.build_gpu_acceptance_model import (  # noqa: E402
+    build_gpu_acceptance_model,
+)
+from tests.fixtures.build_video import build_mjpeg_video  # noqa: E402
+
+from reefvision_edge.domain import Detection  # noqa: E402
+from reefvision_edge.gpu_acceptance import (  # noqa: E402
     compare_predictions,
     decode_video,
     require_cuda_profile,

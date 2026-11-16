@@ -158,6 +158,18 @@ def test_msi_build_reinstalls_the_application_wheel_from_the_selected_bundle() -
     assert '"reefvision-edge==0.1.0"' in script
 
 
+def test_frozen_backend_collects_and_activates_nested_nvidia_dll_directories() -> None:
+    spec = (WINDOWS / "reefvision-edge-backend.spec").read_text(encoding="utf-8")
+    runtime_hook = (WINDOWS / "runtime_hook_nvidia.py").read_text(encoding="utf-8")
+
+    assert '"nvidia-cublas"' in spec
+    assert '"nvidia-cuda-runtime"' in spec
+    assert '"nvidia-cudnn-cu13"' in spec
+    assert "distribution(package)" in spec
+    assert 'suffix.lower() == ".dll"' in spec
+    assert 'rglob("bin")' in runtime_hook
+
+
 def test_installed_acceptance_requires_new_uploads_and_uninstall_isolation() -> None:
     acceptance = (ROOT / "scripts" / "acceptance_windows_installed.ps1").read_text(
         encoding="utf-8"
