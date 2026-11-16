@@ -15,6 +15,27 @@ $buildPython = Join-Path $buildVenv "Scripts\python.exe"
 $backendDist = Join-Path $workRoot "backend"
 $backendWork = Join-Path $workRoot "pyinstaller-build"
 $spec = Join-Path $repoRoot "packaging\windows\reefvision-edge-backend.spec"
+$stageRoot = Join-Path $workRoot "stage"
+$wixObjectRoot = Join-Path $workRoot "wix-obj"
+$wixTools = Join-Path $env:LOCALAPPDATA "tauri\WixTools314"
+$wixSource = Join-Path $repoRoot "packaging\windows\wix\main.wxs"
+$wixBackendSource = Join-Path $workRoot "backend-payload.wxs"
+$launcherTarget = Join-Path $repoRoot "packaging\windows\launcher\target\release\reefvision-edge-launcher.exe"
+$launcherStage = Join-Path $stageRoot "ReefVision-Edge.exe"
+$webViewInstaller = Join-Path $env:USERPROFILE ".codex\worktrees\reefvision-1-3-release\ReefVision\apps\web\src-tauri\target\x86_64-pc-windows-msvc\release\wix\x64\x64\52cfd0a8-f256-48d4-9b18-467f2b3cda78\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
+$downloadsMsi = Join-Path $env:USERPROFILE "Downloads\ReefVision-Edge-0.1.0-windows-x64.msi"
+
+function Clear-BuildDirectory([string]$Path) {
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullWorkRoot = [System.IO.Path]::GetFullPath($workRoot)
+    if (-not $fullPath.StartsWith($fullWorkRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clear a directory outside the Windows build root: $fullPath"
+    }
+    if (Test-Path -LiteralPath $fullPath) {
+        Remove-Item -LiteralPath $fullPath -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
+}
 
 Push-Location $repoRoot
 try {
@@ -69,7 +90,60 @@ try {
         return
     }
 
-    throw "MSI assembly is added by the next packaging task. Use -BackendOnly for now."
+    foreach ($tool in "heat.exe", "candle.exe", "light.exe") {
+        if (-not (Test-Path -LiteralPath (Join-Path $wixTools $tool))) {
+            throw "Required WiX tool is missing: $(Join-Path $wixTools $tool)"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $webViewInstaller)) {
+        throw "The original ReefVision offline WebView2 installer is missing: $webViewInstaller"
+    }
+
+    & cargo build --release --manifest-path (Join-Path $repoRoot "packaging\windows\launcher\Cargo.toml")
+    if ($LASTEXITCODE -ne 0) { throw "ReefVision-Edge launcher build failed." }
+    if (-not (Test-Path -LiteralPath $launcherTarget)) {
+        throw "Expected launcher was not produced: $launcherTarget"
+    }
+
+    Clear-BuildDirectory $stageRoot
+    Clear-BuildDirectory $wixObjectRoot
+    New-Item -ItemType Directory -Path (Join-Path $stageRoot "backend") -Force | Out-Null
+    Copy-Item -LiteralPath $launcherTarget -Destination $launcherStage -Force
+    Copy-Item -LiteralPath (Join-Path $backendDist "reefvision-edge-backend") `
+        -Destination (Join-Path $stageRoot "backend") -Recurse -Force
+
+    & (Join-Path $wixTools "heat.exe") dir (Join-Path $stageRoot "backend") `
+        -nologo -gg -sfrag -srd -sreg -platform x64 `
+        -dr BackendDir -cg BackendPayload -var "var.BackendSource" `
+        -out $wixBackendSource
+    if ($LASTEXITCODE -ne 0) { throw "WiX backend harvesting failed." }
+
+    $candleArguments = @(
+        "-nologo",
+        "-arch", "x64",
+        "-dLauncherSource=$launcherStage",
+        "-dBackendSource=$(Join-Path $stageRoot 'backend')",
+        "-dIconSource=$(Join-Path $repoRoot 'packaging\windows\launcher\icons\icon.ico')",
+        "-dWebView2Installer=$webViewInstaller",
+        "-out", ($wixObjectRoot + [System.IO.Path]::DirectorySeparatorChar),
+        $wixSource,
+        $wixBackendSource
+    )
+    & (Join-Path $wixTools "candle.exe") @candleArguments
+    if ($LASTEXITCODE -ne 0) { throw "WiX source compilation failed." }
+
+    $builtMsi = Join-Path $workRoot "ReefVision-Edge-0.1.0-windows-x64.msi"
+    & (Join-Path $wixTools "light.exe") -nologo -sice:ICE38 -sice:ICE61 -sice:ICE64 -sice:ICE91 `
+        -out $builtMsi `
+        (Join-Path $wixObjectRoot "main.wixobj") `
+        (Join-Path $wixObjectRoot "backend-payload.wixobj")
+    if ($LASTEXITCODE -ne 0) { throw "WiX MSI linking failed." }
+    if (-not (Test-Path -LiteralPath $builtMsi)) {
+        throw "Expected MSI was not produced: $builtMsi"
+    }
+
+    Copy-Item -LiteralPath $builtMsi -Destination $downloadsMsi -Force
+    Write-Host "Windows MSI: $downloadsMsi"
 }
 finally {
     Pop-Location

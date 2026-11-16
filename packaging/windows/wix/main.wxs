@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+      Id="*"
+      Name="ReefVision-Edge"
+      Language="1033"
+      Version="0.1.0"
+      Manufacturer="ReefVision"
+      UpgradeCode="{C2F68AF2-90BF-4CD5-982C-42987B44F5E0}">
+    <Package
+        Id="*"
+        InstallerVersion="500"
+        Compressed="yes"
+        InstallScope="perUser"
+        Platform="x64"
+        Description="ReefVision-Edge offline field inference" />
+    <MajorUpgrade
+        Schedule="afterInstallInitialize"
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer ReefVision-Edge version is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="ReefVisionEdgeIcon" SourceFile="$(var.IconSource)" />
+    <Property Id="ARPPRODUCTICON" Value="ReefVisionEdgeIcon" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Rafael-Del-Valle/ReefVision-Edge" />
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
+
+    <Property Id="INSTALLED_WEBVIEW2_VERSION">
+      <RegistrySearch
+          Id="WebView2SystemX64"
+          Root="HKLM"
+          Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          Name="pv"
+          Type="raw" />
+      <RegistrySearch
+          Id="WebView2SystemX86"
+          Root="HKLM"
+          Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          Name="pv"
+          Type="raw" />
+      <RegistrySearch
+          Id="WebView2CurrentUser"
+          Root="HKCU"
+          Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          Name="pv"
+          Type="raw" />
+    </Property>
+    <Binary
+        Id="MicrosoftEdgeWebView2RuntimeInstaller.exe"
+        SourceFile="$(var.WebView2Installer)" />
+    <CustomAction
+        Id="InstallWebView2Offline"
+        BinaryKey="MicrosoftEdgeWebView2RuntimeInstaller.exe"
+        Execute="deferred"
+        Impersonate="yes"
+        ExeCommand="/silent /install"
+        Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="InstallWebView2Offline" Before="InstallFinalize">
+        NOT (REMOVE OR INSTALLED_WEBVIEW2_VERSION)
+      </Custom>
+    </InstallExecuteSequence>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="EdgeProgramsFolder" Name="Programs">
+          <Directory Id="INSTALLFOLDER" Name="ReefVision-Edge">
+            <Directory Id="BackendDir" Name="backend" />
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ReefVisionEdgeProgramMenu" Name="ReefVision-Edge" />
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ReefVisionEdgeLauncher" Guid="{D5242911-21FC-4B21-8BC8-AC57C429E984}" Win64="yes">
+        <File
+            Id="ReefVisionEdgeLauncherExe"
+            Source="$(var.LauncherSource)"
+            Name="ReefVision-Edge.exe"
+            KeyPath="yes"
+            Checksum="yes" />
+        <RegistryValue
+            Root="HKCU"
+            Key="Software\ReefVision\ReefVision-Edge"
+            Name="InstallDir"
+            Type="string"
+            Value="[INSTALLFOLDER]" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="ReefVisionEdgeProgramMenu">
+      <Component Id="ReefVisionEdgeStartMenuShortcut" Guid="{09D7A8DA-0FD8-4AFC-A416-08782A42D44B}">
+        <Shortcut
+            Id="ReefVisionEdgeStartMenuShortcutLink"
+            Name="ReefVision-Edge"
+            Description="Start ReefVision-Edge offline field inference"
+            Target="[#ReefVisionEdgeLauncherExe]"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="ReefVisionEdgeIcon">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="org.reefvision.edge.desktop" />
+        </Shortcut>
+        <RemoveFolder Id="RemoveReefVisionEdgeProgramMenu" On="uninstall" />
+        <RegistryValue
+            Root="HKCU"
+            Key="Software\ReefVision\ReefVision-Edge"
+            Name="StartMenuShortcut"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="ReefVisionEdgeFeature" Title="ReefVision-Edge" Level="1" Absent="disallow">
+      <ComponentRef Id="ReefVisionEdgeLauncher" />
+      <ComponentRef Id="ReefVisionEdgeStartMenuShortcut" />
+      <ComponentGroupRef Id="BackendPayload" />
+    </Feature>
+  </Product>
+</Wix>
