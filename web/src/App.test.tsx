@@ -167,6 +167,15 @@ test("starting inference does not rediscover cameras", async () => {
       }
       if (url.endsWith("/api/sessions/session-2/start"))
         return jsonResponse({});
+      if (url.endsWith("/api/sources/video") && init?.method === "POST")
+        return jsonResponse({ ...source, id: "source-2", name: "new.avi" });
+      if (url.endsWith("/api/sources/camera") && init?.method === "POST")
+        return jsonResponse({
+          ...source,
+          id: "camera-source-1",
+          kind: "camera",
+          name: "Camera 1",
+        });
       if (url.endsWith("/api/models")) return jsonResponse([model]);
       if (url.endsWith("/api/sources")) return jsonResponse([source]);
       if (url.endsWith("/api/sessions")) return jsonResponse([session]);
@@ -227,6 +236,20 @@ test("starting inference does not rediscover cameras", async () => {
     ).toBe(true),
   );
 
+  await user.upload(
+    screen.getByLabelText("Video file"),
+    new File(["video"], "new.avi", { type: "video/x-msvideo" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Import video" }));
+  await user.click(screen.getByRole("button", { name: "Connect camera" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/sources/camera"),
+      ),
+    ).toBe(true),
+  );
+
   expect(
     fetchMock.mock.calls.filter(([input]) =>
       String(input).endsWith("/api/capture-devices"),
@@ -254,6 +277,7 @@ test("shows live source compute recording overlays and actual runtime metrics", 
   ).toBeVisible();
   expect(screen.getByText("12.5 ms")).toBeVisible();
   expect(screen.getByText("18.4 ms")).toBeVisible();
+  expect(screen.getAllByText("last 4,096 frames")).toHaveLength(2);
   expect(screen.getByLabelText("Preview masks")).toBeDisabled();
   expect(screen.getByLabelText("Recording trails")).toBeDisabled();
   expect(

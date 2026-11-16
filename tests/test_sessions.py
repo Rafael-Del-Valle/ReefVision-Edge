@@ -89,7 +89,7 @@ def test_recorded_session_persists_metrics_detections_and_preview(tmp_path: Path
     assert restored.jpeg == preview.jpeg
 
 
-def test_terminal_latency_percentiles_include_every_processed_frame(
+def test_terminal_latency_percentiles_include_every_processed_frame_within_window(
     tmp_path: Path,
 ) -> None:
     database, model, source, previews, _, _ = prepared_services(tmp_path)

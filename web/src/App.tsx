@@ -27,6 +27,10 @@ interface StationData {
   monitorStatus: MonitorStatus;
 }
 
+function upsertById<T extends { id: string }>(values: T[], value: T): T[] {
+  return [value, ...values.filter((item) => item.id !== value.id)];
+}
+
 export function App() {
   const [view, setView] = useState<View>("monitor");
   const [data, setData] = useState<StationData | null>(null);
@@ -102,10 +106,6 @@ export function App() {
     );
     return () => window.clearInterval(timer);
   }, [data?.sessions, data?.monitorStatus.state, pollActiveState]);
-
-  async function refresh() {
-    await load();
-  }
 
   if (error || !data) {
     return (
@@ -190,16 +190,37 @@ export function App() {
               await pollActiveState();
             }}
             onModelUpload={async (model, metadata) => {
-              await api.registerModel(model, metadata);
-              await refresh();
+              const registered = await api.registerModel(model, metadata);
+              setData((current) =>
+                current
+                  ? {
+                      ...current,
+                      models: upsertById(current.models, registered),
+                    }
+                  : current,
+              );
             }}
             onVideoUpload={async (video) => {
-              await api.importVideo(video);
-              await refresh();
+              const imported = await api.importVideo(video);
+              setData((current) =>
+                current
+                  ? {
+                      ...current,
+                      sources: upsertById(current.sources, imported),
+                    }
+                  : current,
+              );
             }}
             onCamera={async (device) => {
-              await api.registerCamera(device);
-              await refresh();
+              const registered = await api.registerCamera(device);
+              setData((current) =>
+                current
+                  ? {
+                      ...current,
+                      sources: upsertById(current.sources, registered),
+                    }
+                  : current,
+              );
             }}
             onPreview={async (sourceId) => {
               await api.selectMonitor(sourceId);

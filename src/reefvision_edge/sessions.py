@@ -16,7 +16,7 @@ from pathlib import Path
 
 from reefvision_edge.compute import ComputeChoice, sample_process_vram_mb
 from reefvision_edge.db import Database
-from reefvision_edge.domain import OverlaySettings
+from reefvision_edge.domain import LATENCY_STATISTICS_WINDOW_FRAMES, OverlaySettings
 from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
@@ -176,7 +176,7 @@ class SessionRunner:
         processed = 0
         detection_count = 0
         latency_total = 0.0
-        latencies: deque[float] = deque(maxlen=4096)
+        latencies: deque[float] = deque(maxlen=LATENCY_STATISTICS_WINDOW_FRAMES)
         median_latency_ms: float | None = None
         p95_latency_ms: float | None = None
         peak_vram_mb: float | None = None

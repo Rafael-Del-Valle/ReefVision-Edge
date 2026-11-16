@@ -279,6 +279,7 @@ export function Monitor({
                   ? `${active.median_latency_ms.toFixed(1)} ms`
                   : "—"
               }
+              detail="last 4,096 frames"
             />
             <Metric
               label="p95"
@@ -287,6 +288,7 @@ export function Monitor({
                   ? `${active.p95_latency_ms.toFixed(1)} ms`
                   : "—"
               }
+              detail="last 4,096 frames"
             />
             <Metric
               label="Frames"

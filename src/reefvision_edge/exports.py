@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from reefvision_edge.db import Database
-from reefvision_edge.domain import ModelMetadata
+from reefvision_edge.domain import LATENCY_STATISTICS_WINDOW_FRAMES, ModelMetadata
 
 
 class ExportError(ValueError):
@@ -173,6 +173,10 @@ class ExportService:
                 "profile_artifact": (
                     "operator-profile.json" if session[19] else None
                 ),
+            },
+            "latency_statistics": {
+                "kind": "rolling_window",
+                "window_frames": LATENCY_STATISTICS_WINDOW_FRAMES,
             },
             "recording": {
                 "record_data": bool(settings.get("record_data", True)),

@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+LATENCY_STATISTICS_WINDOW_FRAMES = 4096
+
 
 class PreprocessingMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")

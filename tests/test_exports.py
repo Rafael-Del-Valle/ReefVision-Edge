@@ -52,6 +52,10 @@ def test_export_contains_versioned_provenance_and_original_coordinate_csv(
     assert manifest["compute"]["actual_device"] == "CPU"
     assert manifest["recording"]["record_data"] is True
     assert manifest["recording"]["record_monitor"] is False
+    assert manifest["latency_statistics"] == {
+        "kind": "rolling_window",
+        "window_frames": 4096,
+    }
     assert [frame["frame_index"] for frame in manifest["frames"]] == [0, 2, 4]
     assert [frame["detection_count"] for frame in manifest["frames"]] == [2, 2, 2]
     assert len(rows) == 6
