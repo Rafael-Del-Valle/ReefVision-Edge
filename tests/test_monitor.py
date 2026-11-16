@@ -50,6 +50,21 @@ def test_recorded_monitor_preview_is_paced_loops_and_changes_frames(tmp_path: Pa
         monitor.shutdown()
 
 
+def test_monitor_jpeg_snapshot_keeps_frame_metadata_coherent(tmp_path: Path) -> None:
+    store, source_id = _store(tmp_path)
+    monitor = MonitorPreviewService(store)
+    frame = np.full((12, 18, 3), 73, dtype=np.uint8)
+
+    monitor._put_frame(source_id, "receiving", 27, frame)
+    jpeg, status = monitor.jpeg_snapshot()
+
+    decoded = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert status.source_id == source_id
+    assert status.frame_index == 27
+    assert status.updated_at > 0
+    assert decoded.shape == frame.shape
+
+
 def test_monitor_reports_missing_selection_and_releases_for_inference(tmp_path: Path) -> None:
     store, source_id = _store(tmp_path)
     monitor = MonitorPreviewService(store)

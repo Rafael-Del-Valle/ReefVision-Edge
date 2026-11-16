@@ -52,7 +52,10 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
             break
         time.sleep(0.01)
     assert monitor_status["state"] == "replaying"
-    assert client.get("/api/monitor/frame").headers["content-type"] == "image/jpeg"
+    monitor_frame = client.get("/api/monitor/frame")
+    assert monitor_frame.headers["content-type"] == "image/jpeg"
+    assert int(monitor_frame.headers["x-frame-index"]) >= 0
+    assert float(monitor_frame.headers["x-frame-published-at"]) > 0
 
     created_response = client.post(
         "/api/sessions",
@@ -110,6 +113,7 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
     assert preview.headers["content-type"] == "image/jpeg"
     assert int(preview.headers["x-frame-index"]) == 4
     assert int(preview.headers["x-detection-count"]) == 2
+    assert float(preview.headers["x-frame-published-at"]) > 0
 
     export = client.get(f"/api/sessions/{session_id}/export")
     assert export.status_code == 200

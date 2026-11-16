@@ -4,7 +4,9 @@ import hashlib
 import json
 import os
 import threading
+import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,7 +23,16 @@ class PreviewFrame:
     frame_index: int
     timestamp_ms: float | None
     detection_count: int
+    published_at: float
     jpeg: bytes
+
+
+@dataclass(frozen=True)
+class _PendingPreview:
+    frame_index: int
+    timestamp_ms: float | None
+    frame: NDArray[np.uint8]
+    detections: tuple[Detection, ...]
 
 
 def draw_overlay(
@@ -75,6 +86,7 @@ class PreviewStore:
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
             detection_count=len(detections),
+            published_at=time.time(),
             jpeg=buffer.tobytes(),
         )
         target = self._path(session_id)
@@ -86,6 +98,7 @@ class PreviewStore:
                     "frame_index": frame_index,
                     "timestamp_ms": timestamp_ms,
                     "detection_count": len(detections),
+                    "published_at": preview.published_at,
                 },
                 separators=(",", ":"),
             ).encode("utf-8")
@@ -121,6 +134,7 @@ class PreviewStore:
                     else float(metadata["timestamp_ms"])
                 ),
                 detection_count=int(metadata["detection_count"]),
+                published_at=float(metadata.get("published_at", 0.0)),
                 jpeg=jpeg,
             )
         except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
@@ -128,3 +142,62 @@ class PreviewStore:
         with self._lock:
             self._remember(session_id, preview)
         return preview
+
+
+class LatestPreviewPublisher:
+    def __init__(
+        self,
+        store: PreviewStore,
+        session_id: str,
+        settings: OverlaySettings,
+        *,
+        max_fps: float,
+        clock: Callable[[], float] = time.perf_counter,
+    ) -> None:
+        if max_fps <= 0:
+            raise ValueError("Preview publication FPS must be positive.")
+        self.store = store
+        self.session_id = session_id
+        self.settings = settings
+        self.interval = 1.0 / max_fps
+        self.clock = clock
+        self._next_publish_at = 0.0
+        self._pending: _PendingPreview | None = None
+        self._published_frame_index: int | None = None
+
+    def offer(
+        self,
+        frame_index: int,
+        timestamp_ms: float | None,
+        frame: NDArray[np.uint8],
+        detections: tuple[Detection, ...],
+    ) -> bool:
+        self._pending = _PendingPreview(
+            frame_index,
+            timestamp_ms,
+            frame.copy(),
+            detections,
+        )
+        now = self.clock()
+        if self._published_frame_index is None or now >= self._next_publish_at:
+            return self._publish(now)
+        return False
+
+    def flush(self) -> bool:
+        return self._publish(self.clock())
+
+    def _publish(self, now: float) -> bool:
+        pending = self._pending
+        if pending is None or pending.frame_index == self._published_frame_index:
+            return False
+        self.store.put(
+            self.session_id,
+            pending.frame_index,
+            pending.timestamp_ms,
+            pending.frame,
+            pending.detections,
+            self.settings,
+        )
+        self._published_frame_index = pending.frame_index
+        self._next_publish_at = now + self.interval
+        return True

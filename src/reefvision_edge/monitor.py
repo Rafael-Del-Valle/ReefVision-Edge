@@ -83,14 +83,18 @@ class MonitorPreviewService:
             return self._status
 
     def jpeg(self) -> bytes:
+        return self.jpeg_snapshot()[0]
+
+    def jpeg_snapshot(self) -> tuple[bytes, MonitorStatus]:
         with self._lock:
             frame = None if self._frame is None else self._frame.copy()
+            status = self._status
         if frame is None:
             raise KeyError("No monitor preview frame is available.")
         encoded, value = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if not encoded:
             raise SourceError("Monitor preview frame could not be encoded.")
-        return value.tobytes()
+        return value.tobytes(), status
 
     def _put_frame(
         self, source_id: str, state: MonitorState, frame_index: int, frame: NDArray[np.uint8]

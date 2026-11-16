@@ -21,7 +21,7 @@ from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
 from reefvision_edge.monitor_video import MonitorVideoWriter, render_monitor_frame
-from reefvision_edge.preview import PreviewStore
+from reefvision_edge.preview import LatestPreviewPublisher, PreviewStore
 from reefvision_edge.sources import (
     RecordedVideoSource,
     SourceError,
@@ -66,6 +66,7 @@ class SessionRecord:
 
 
 DetectorFactory = Callable[..., YoloOnnxDetector]
+PREVIEW_MAX_FPS = 30.0
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -183,6 +184,7 @@ class SessionRunner:
         next_vram_sample_at = started
         detector: YoloOnnxDetector | None = None
         monitor_writer: MonitorVideoWriter | None = None
+        preview_publisher: LatestPreviewPublisher | None = None
         try:
             record = _get_session(self.database, session_id)
             if record.status == "queued":
@@ -238,10 +240,18 @@ class SessionRunner:
             elif source_record["kind"] == "camera":
                 camera = camera_source(str(source_record["path"]))
                 source_frames = camera.frames(queue_size=1, stop_event=canceled)
+                preview_publisher = LatestPreviewPublisher(
+                    self.previews,
+                    session_id,
+                    record.preview_overlays,
+                    max_fps=PREVIEW_MAX_FPS,
+                )
             else:
                 raise SourceError(f"Unsupported source kind {source_record['kind']}.")
             for source_frame in source_frames:
                 if canceled.is_set():
+                    if preview_publisher is not None:
+                        preview_publisher.flush()
                     self._persist_terminal_percentiles(session_id, latencies)
                     self._finalize_artifacts(session_id, detector, monitor_writer)
                     self._finish(session_id, "canceled")
@@ -344,20 +354,35 @@ class SessionRunner:
                             record.recording_overlays,
                         )
                     )
-                self.previews.put(
-                    session_id,
-                    source_frame.frame_index,
-                    source_frame.timestamp_ms,
-                    source_frame.frame,
-                    result.detections,
-                    record.preview_overlays,
-                )
+                if preview_publisher is not None:
+                    preview_publisher.offer(
+                        source_frame.frame_index,
+                        source_frame.timestamp_ms,
+                        source_frame.frame,
+                        result.detections,
+                    )
+                else:
+                    self.previews.put(
+                        session_id,
+                        source_frame.frame_index,
+                        source_frame.timestamp_ms,
+                        source_frame.frame,
+                        result.detections,
+                        record.preview_overlays,
+                    )
+            if preview_publisher is not None:
+                preview_publisher.flush()
             self._persist_terminal_percentiles(session_id, latencies)
             self._finalize_artifacts(session_id, detector, monitor_writer)
             terminal = "canceled" if canceled.is_set() else "completed"
             self._finish(session_id, terminal)
         except Exception as exc:
             message = str(exc) or type(exc).__name__
+            if preview_publisher is not None:
+                try:
+                    preview_publisher.flush()
+                except Exception as preview_error:
+                    message += f" Preview finalization also failed: {preview_error}"
             if detector is not None:
                 try:
                     self._persist_terminal_percentiles(session_id, latencies)

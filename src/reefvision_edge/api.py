@@ -160,12 +160,20 @@ def create_api_router(
     @router.get("/monitor/frame", response_model=None)
     def monitor_frame() -> Response | JSONResponse:
         try:
-            value = monitor.jpeg()
+            value, status = monitor.jpeg_snapshot()
         except KeyError:
             return error_response(404, "preview_not_found", "No monitor frame is available yet.")
         except SourceError as exc:
             return error_response(409, "preview_failed", str(exc))
-        return Response(value, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        return Response(
+            value,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Frame-Index": str(status.frame_index),
+                "X-Frame-Published-At": str(status.updated_at),
+            },
+        )
 
     @router.post("/sources/video", status_code=201, response_model=None)
     def import_video(video: UploadFile) -> dict[str, object] | JSONResponse:
@@ -246,6 +254,7 @@ def create_api_router(
                 "Cache-Control": "no-store",
                 "X-Frame-Index": str(current.frame_index),
                 "X-Detection-Count": str(current.detection_count),
+                "X-Frame-Published-At": str(current.published_at),
             },
         )
 

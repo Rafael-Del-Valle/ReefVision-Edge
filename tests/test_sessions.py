@@ -301,6 +301,41 @@ def test_preview_overlay_draws_box_at_original_coordinates() -> None:
     assert tuple(frame[30, 20]) == (0, 0, 0)
 
 
+def test_latest_preview_publisher_limits_rate_and_flushes_newest_frame(
+    tmp_path: Path,
+) -> None:
+    from reefvision_edge.preview import LatestPreviewPublisher
+
+    clock = [100.0]
+    store = PreviewStore(tmp_path / "previews")
+    publisher = LatestPreviewPublisher(
+        store,
+        "camera-session",
+        OverlaySettings(timer=False, boxes=False, labels=False),
+        max_fps=30.0,
+        clock=lambda: clock[0],
+    )
+
+    assert publisher.offer(0, 0.0, np.full((12, 18, 3), 10, dtype=np.uint8), ())
+    clock[0] += 0.010
+    assert not publisher.offer(
+        1, 10.0, np.full((12, 18, 3), 20, dtype=np.uint8), ()
+    )
+    clock[0] += 0.010
+    assert not publisher.offer(
+        2, 20.0, np.full((12, 18, 3), 30, dtype=np.uint8), ()
+    )
+    assert store.get("camera-session").frame_index == 0
+
+    assert publisher.flush()
+    latest = store.get("camera-session")
+    restored = PreviewStore(tmp_path / "previews").get("camera-session")
+    assert latest.frame_index == 2
+    assert restored.frame_index == 2
+    assert latest.published_at > 0
+    assert not publisher.flush()
+
+
 def test_runner_bounds_concurrent_work_and_shutdown_cancels_active_job(
     tmp_path: Path,
 ) -> None:
