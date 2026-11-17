@@ -47,6 +47,7 @@ export interface SessionCreateOptions {
   modelId: string;
   sourceId: string;
   sampleEvery: number;
+  inferenceProfile: InferenceProfile;
   computeDevice: ComputeDevice;
   recordData: boolean;
   recordMonitor: boolean;
@@ -124,6 +125,7 @@ export interface SessionRecord {
   source_id: string;
   status: SessionStatus;
   sample_every: number;
+  inference_profile: InferenceProfile;
   compute_device: ComputeDevice;
   record_data: boolean;
   record_monitor: boolean;

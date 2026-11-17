@@ -243,6 +243,7 @@ def convert_checkpoint(request: Mapping[str, object]) -> dict[str, object]:
         "output": output,
         "confidence_threshold": confidence,
         "iou_threshold": iou,
+        "supported_profiles": ["full_frame", "thesis_tiling"],
     }
     return {
         "ok": True,

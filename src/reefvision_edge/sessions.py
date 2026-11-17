@@ -16,7 +16,11 @@ from pathlib import Path
 
 from reefvision_edge.compute import ComputeChoice, sample_process_vram_mb
 from reefvision_edge.db import Database
-from reefvision_edge.domain import LATENCY_STATISTICS_WINDOW_FRAMES, OverlaySettings
+from reefvision_edge.domain import (
+    LATENCY_STATISTICS_WINDOW_FRAMES,
+    InferenceProfile,
+    OverlaySettings,
+)
 from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
@@ -38,6 +42,7 @@ class SessionRecord:
     source_id: str
     status: str
     sample_every: int
+    inference_profile: InferenceProfile
     compute_device: ComputeChoice
     record_data: bool
     record_monitor: bool
@@ -205,6 +210,7 @@ class SessionRunner:
             detector = self.detector_factory(
                 model, record.compute_device, record.enable_profiling
             )
+            detector.inference_profile = record.inference_profile
             with self.database.connect() as connection:
                 connection.execute(
                     """
@@ -500,6 +506,7 @@ class SessionService:
         source_id: str,
         *,
         sample_every: int = 1,
+        inference_profile: InferenceProfile | str = InferenceProfile.FULL_FRAME,
         compute_device: ComputeChoice | str = ComputeChoice.AUTO,
         record_data: bool = True,
         record_monitor: bool = False,
@@ -509,15 +516,19 @@ class SessionService:
     ) -> SessionRecord:
         if sample_every < 1:
             raise ValueError("sample_every must be at least one")
-        self.runner.model_registry.get(model_id)
+        model = self.runner.model_registry.get(model_id)
         self.runner.media_store.get_record(source_id)
         session_id = str(uuid.uuid4())
         compute = ComputeChoice(compute_device)
+        profile = InferenceProfile(inference_profile)
+        if profile not in model.metadata.supported_profiles:
+            raise ValueError(f"Model {model_id} does not support {profile.value} inference.")
         preview = preview_overlays or OverlaySettings()
         recording = recording_overlays or OverlaySettings()
         settings = json.dumps(
             {
                 "sample_every": sample_every,
+                "inference_profile": profile.value,
                 "record_data": record_data,
                 "record_monitor": record_monitor,
                 "preview_overlays": asdict(preview),
@@ -601,6 +612,9 @@ def _get_session(database: Database, session_id: str) -> SessionRecord:
         source_id=row[2],
         status=row[3],
         sample_every=int(settings["sample_every"]),
+        inference_profile=InferenceProfile(
+            settings.get("inference_profile", InferenceProfile.FULL_FRAME)
+        ),
         compute_device=ComputeChoice(row[6]),
         record_data=bool(settings.get("record_data", True)),
         record_monitor=bool(settings.get("record_monitor", False)),

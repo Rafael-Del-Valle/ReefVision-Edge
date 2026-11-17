@@ -16,6 +16,7 @@ const model = {
   metadata_sha256: "b".repeat(64),
   provider: "CPUExecutionProvider",
   available_providers: ["CPUExecutionProvider"],
+  supported_profiles: ["full_frame", "thesis_tiling"],
 };
 
 const source = {
@@ -36,6 +37,7 @@ const session = {
   source_id: "source-1",
   status: "completed",
   sample_every: 2,
+  inference_profile: "full_frame",
   compute_device: "auto",
   record_data: true,
   record_monitor: true,
@@ -362,6 +364,10 @@ test("starting inference does not rediscover cameras", async () => {
   const user = userEvent.setup();
   render(<App />);
   await screen.findByRole("heading", { name: "Field monitor" });
+  await user.selectOptions(
+    screen.getByLabelText("Inference profile"),
+    "thesis_tiling",
+  );
   const discoveryCallsBefore = fetchMock.mock.calls.filter(([input]) =>
     String(input).endsWith("/api/capture-devices"),
   ).length;
@@ -374,6 +380,13 @@ test("starting inference does not rediscover cameras", async () => {
       ),
     ).toBe(true),
   );
+  const createCall = fetchMock.mock.calls.find(
+    ([input, init]) =>
+      String(input).endsWith("/api/sessions") && init?.method === "POST",
+  );
+  expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
+    inference_profile: "thesis_tiling",
+  });
 
   await user.upload(
     screen.getByLabelText("Video file"),

@@ -105,6 +105,7 @@ export const api = {
         model_id: options.modelId,
         source_id: options.sourceId,
         sample_every: options.sampleEvery,
+        inference_profile: options.inferenceProfile,
         compute_device: options.computeDevice,
         record_data: options.recordData,
         record_monitor: options.recordMonitor,

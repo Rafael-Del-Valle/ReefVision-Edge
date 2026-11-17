@@ -6,6 +6,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import type {
   CaptureDevice,
   ComputeDevice,
+  InferenceProfile,
   ModelRecord,
   MonitorStatus,
   OverlayCapability,
@@ -151,6 +152,8 @@ export function Monitor({
   const [modelId, setModelId] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [sampleEvery, setSampleEvery] = useState(1);
+  const [inferenceProfile, setInferenceProfile] =
+    useState<InferenceProfile>("full_frame");
   const [computeDevice, setComputeDevice] = useState<ComputeDevice>("auto");
   const [recordData, setRecordData] = useState(true);
   const [recordMonitor, setRecordMonitor] = useState(false);
@@ -170,6 +173,15 @@ export function Monitor({
   const selectedModel = modelId || models[0]?.id || "";
   const selectedSource = sourceId || sources[0]?.id || "";
   const selectedCamera = cameraDevice || captureDevices[0]?.id || "";
+  const selectedModelRecord = models.find((item) => item.id === selectedModel);
+  const supportedProfiles = selectedModelRecord?.supported_profiles ?? [
+    "full_frame",
+  ];
+  useEffect(() => {
+    if (!supportedProfiles.includes(inferenceProfile)) {
+      setInferenceProfile("full_frame");
+    }
+  }, [inferenceProfile, supportedProfiles]);
   useEffect(() => {
     if (
       cameraDevice &&
@@ -238,6 +250,7 @@ export function Monitor({
     modelId: selectedModel,
     sourceId: selectedSource,
     sampleEvery,
+    inferenceProfile,
     computeDevice,
     recordData,
     recordMonitor,
@@ -423,6 +436,23 @@ export function Monitor({
                 ) : (
                   <option value="">Register a model first</option>
                 )}
+              </select>
+            </label>
+            <label>
+              <span>Inference profile</span>
+              <select
+                aria-label="Inference profile"
+                value={inferenceProfile}
+                onChange={(event) =>
+                  setInferenceProfile(event.target.value as InferenceProfile)
+                }
+              >
+                <option value="full_frame">Full frame</option>
+                {supportedProfiles.includes("thesis_tiling") ? (
+                  <option value="thesis_tiling">
+                    Thesis tiling · 1920 × 1344 · 40% overlap
+                  </option>
+                ) : null}
               </select>
             </label>
             <label>

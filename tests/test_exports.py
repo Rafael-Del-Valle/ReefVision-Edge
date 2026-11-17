@@ -43,6 +43,13 @@ def test_export_contains_versioned_provenance_and_original_coordinate_csv(
     assert manifest["session"]["id"] == session.id
     assert manifest["session"]["status"] == "completed"
     assert manifest["sampling"] == {"sample_every": 2, "first_frame_index": 0}
+    assert manifest["inference_profile"] == {
+        "name": "full_frame",
+        "source_tile_width": None,
+        "source_tile_height": None,
+        "overlap": None,
+        "merge": "class_aware_nms",
+    }
     assert manifest["timestamp_basis"] == "frame_index / reported_fps"
     assert manifest["model"]["sha256"] == model.model_sha256
     assert manifest["model"]["metadata_sha256"] == model.metadata_sha256

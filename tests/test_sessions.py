@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -14,7 +15,7 @@ from tests.test_model_registry import valid_metadata
 
 from reefvision_edge.compute import ComputeChoice, cpu_fallback
 from reefvision_edge.db import Database
-from reefvision_edge.domain import OverlaySettings
+from reefvision_edge.domain import InferenceProfile, OverlaySettings
 from reefvision_edge.inference import YoloOnnxDetector
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_registry import ModelRegistry
@@ -157,6 +158,36 @@ def test_session_settings_keep_recording_and_overlay_controls_independent(
         ).fetchone()[0]
     assert frame_rows == 0
     assert detection_rows == 0
+
+
+def test_session_persists_supported_thesis_tiling_profile(tmp_path: Path) -> None:
+    database, model, source, _, _, service = prepared_services(tmp_path)
+    with database.connect() as connection:
+        metadata = valid_metadata()
+        metadata["supported_profiles"] = ["full_frame", "thesis_tiling"]
+        connection.execute(
+            "UPDATE models SET metadata_json = ? WHERE id = ?",
+            (json.dumps(metadata), model.id),
+        )
+
+    session = service.create(
+        model.id,
+        source.id,
+        inference_profile=InferenceProfile.THESIS_TILING,
+    )
+
+    assert session.inference_profile is InferenceProfile.THESIS_TILING
+
+
+def test_session_rejects_profile_the_model_does_not_support(tmp_path: Path) -> None:
+    _, model, source, _, _, service = prepared_services(tmp_path)
+
+    with pytest.raises(ValueError, match="does not support thesis_tiling"):
+        service.create(
+            model.id,
+            source.id,
+            inference_profile=InferenceProfile.THESIS_TILING,
+        )
 
 
 def test_session_preserves_overlay_preferences_the_active_pipeline_cannot_render(

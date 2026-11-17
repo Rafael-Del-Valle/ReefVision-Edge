@@ -18,8 +18,14 @@ from reefvision_edge.compute import (
     parse_ort_profile,
     resolve_compute,
 )
-from reefvision_edge.domain import Detection, InferenceResult, RegisteredModel
+from reefvision_edge.domain import (
+    Detection,
+    InferenceProfile,
+    InferenceResult,
+    RegisteredModel,
+)
 from reefvision_edge.geometry import letterbox, restore_box
+from reefvision_edge.tiling import run_tiled_inference
 
 
 class _AssignedSubgraph(Protocol):
@@ -140,6 +146,7 @@ class YoloOnnxDetector:
         self.provider = provider_assignment_summary(self.session)
         self.profile_path: Path | None = None
         self.profile: OperatorProfile | None = None
+        self.inference_profile = InferenceProfile.FULL_FRAME
 
     def _fall_back_to_cpu_after_validation(self, reason: str) -> None:
         if self.profile_path is not None:
@@ -168,7 +175,21 @@ class YoloOnnxDetector:
             self.profile = parse_ort_profile(self.profile_path)
         return self.profile
 
-    def predict(self, frame: NDArray[np.uint8]) -> InferenceResult:
+    def predict(
+        self,
+        frame: NDArray[np.uint8],
+        profile: InferenceProfile | str | None = None,
+    ) -> InferenceResult:
+        selected = InferenceProfile(profile or self.inference_profile)
+        if selected is InferenceProfile.THESIS_TILING:
+            return run_tiled_inference(
+                frame,
+                self._predict_frame,
+                iou_threshold=self.model.metadata.iou_threshold,
+            )
+        return self._predict_frame(frame)
+
+    def _predict_frame(self, frame: NDArray[np.uint8]) -> InferenceResult:
         started = time.perf_counter()
         metadata = self.model.metadata
         transformed, mapping = letterbox(

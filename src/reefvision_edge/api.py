@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from reefvision_edge.capture_devices import discover_capture_devices
 from reefvision_edge.compute import ComputeChoice
 from reefvision_edge.config import Settings
-from reefvision_edge.domain import OverlaySettings, RegisteredModel
+from reefvision_edge.domain import InferenceProfile, OverlaySettings, RegisteredModel
 from reefvision_edge.exports import ExportError, ExportService
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_imports import ModelImportError, ModelImportService
@@ -32,6 +32,7 @@ class SessionRequest(BaseModel):
     model_id: str
     source_id: str
     sample_every: int = Field(default=1, ge=1, le=10000)
+    inference_profile: InferenceProfile = InferenceProfile.FULL_FRAME
     compute_device: ComputeChoice = ComputeChoice.AUTO
     record_data: bool = True
     record_monitor: bool = False
@@ -264,6 +265,7 @@ def create_api_router(
                     request.model_id,
                     request.source_id,
                     sample_every=request.sample_every,
+                    inference_profile=request.inference_profile,
                     compute_device=request.compute_device,
                     record_data=request.record_data,
                     record_monitor=request.record_monitor,

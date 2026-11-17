@@ -12,6 +12,11 @@ from typing import Any
 
 from reefvision_edge.db import Database
 from reefvision_edge.domain import LATENCY_STATISTICS_WINDOW_FRAMES, ModelMetadata
+from reefvision_edge.tiling import (
+    THESIS_TILE_HEIGHT,
+    THESIS_TILE_OVERLAP,
+    THESIS_TILE_WIDTH,
+)
 
 
 class ExportError(ValueError):
@@ -177,6 +182,25 @@ class ExportService:
             "latency_statistics": {
                 "kind": "rolling_window",
                 "window_frames": LATENCY_STATISTICS_WINDOW_FRAMES,
+            },
+            "inference_profile": {
+                "name": settings.get("inference_profile", "full_frame"),
+                "source_tile_width": (
+                    THESIS_TILE_WIDTH
+                    if settings.get("inference_profile") == "thesis_tiling"
+                    else None
+                ),
+                "source_tile_height": (
+                    THESIS_TILE_HEIGHT
+                    if settings.get("inference_profile") == "thesis_tiling"
+                    else None
+                ),
+                "overlap": (
+                    THESIS_TILE_OVERLAP
+                    if settings.get("inference_profile") == "thesis_tiling"
+                    else None
+                ),
+                "merge": "class_aware_nms",
             },
             "recording": {
                 "record_data": bool(settings.get("record_data", True)),
