@@ -361,6 +361,34 @@ def test_latest_preview_publisher_limits_rate_and_flushes_newest_frame(
     assert not publisher.flush()
 
 
+def test_latest_preview_publisher_does_not_halve_a_30_fps_camera() -> None:
+    from reefvision_edge.preview import LatestPreviewPublisher
+
+    class RecordingStore:
+        def __init__(self) -> None:
+            self.frame_indexes: list[int] = []
+
+        def put(self, _session_id, frame_index, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            self.frame_indexes.append(frame_index)
+
+    clock = [100.0]
+    store = RecordingStore()
+    publisher = LatestPreviewPublisher(
+        store,  # type: ignore[arg-type]
+        "camera-session",
+        OverlaySettings(timer=False, boxes=False, labels=False),
+        max_fps=30.0,
+        clock=lambda: clock[0],
+    )
+    frame = np.zeros((12, 18, 3), dtype=np.uint8)
+
+    for frame_index in range(30):
+        publisher.offer(frame_index, frame_index * 33.0, frame, ())
+        clock[0] += 0.033
+
+    assert store.frame_indexes == list(range(30))
+
+
 def test_runner_bounds_concurrent_work_and_shutdown_cancels_active_job(
     tmp_path: Path,
 ) -> None:

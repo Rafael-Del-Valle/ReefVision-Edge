@@ -176,6 +176,12 @@ class LatestPreviewPublisher:
         self.session_id = session_id
         self.settings = settings
         self.interval = 1.0 / max_fps
+        # Camera clocks commonly report 29.97 FPS while arriving with a few
+        # tenths of a millisecond of jitter. Requiring the full nominal 30 FPS
+        # interval causes alternating frames to miss the deadline, collapsing
+        # a smooth feed to roughly 15 FPS. A small scheduling allowance keeps
+        # those source frames while a 60 FPS source is still bounded near 30.
+        self.publish_interval = self.interval * 0.9
         self.clock = clock
         self._next_publish_at = 0.0
         self._pending: _PendingPreview | None = None
@@ -215,5 +221,5 @@ class LatestPreviewPublisher:
             self.settings,
         )
         self._published_frame_index = pending.frame_index
-        self._next_publish_at = now + self.interval
+        self._next_publish_at = now + self.publish_interval
         return True
