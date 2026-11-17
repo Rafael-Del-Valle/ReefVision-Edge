@@ -16,6 +16,13 @@ if (-not $bundlePath.StartsWith($artifactRoot + [System.IO.Path]::DirectorySepar
 & (Join-Path $PSScriptRoot "build_windows_runtime_bundle.ps1") `
     -Profile $RuntimeProfile -OutputPath $OutputPath
 if ($LASTEXITCODE -ne 0) { throw "Windows runtime bundle build failed." }
+& (Join-Path $PSScriptRoot "build_windows_converter_bundle.ps1") `
+    -OutputPath $OutputPath
+if ($LASTEXITCODE -ne 0) { throw "Windows converter bundle build failed." }
+$converterWheels = Join-Path $bundlePath "converter-wheels"
+if (-not (Test-Path -LiteralPath $converterWheels)) {
+    throw "Converter bundle did not produce converter-wheels."
+}
 New-Item -ItemType Directory -Path (Join-Path $bundlePath "app") | Out-Null
 
 Push-Location $repoRoot
@@ -28,6 +35,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "wheel build failed with exit code $LASTEXITCODE" }
     & $python -m pip download --dest (Join-Path $bundlePath "wheels") ".[windows-package]"
     if ($LASTEXITCODE -ne 0) { throw "wheel download failed with exit code $LASTEXITCODE" }
+    $researchFiles = @(
+        & git ls-files "*.pt"
+        & git ls-files "*.pth"
+        & git ls-files "*.onnx"
+    ) | Where-Object { $_ }
+    if ($researchFiles.Count) {
+        throw "Research weights or derived models are tracked and would enter release assets: $($researchFiles -join ', ')"
+    }
     $sourceArchive = Join-Path $bundlePath "reefvision-edge-source.zip"
     git archive --format=zip -o $sourceArchive HEAD
     if ($LASTEXITCODE -ne 0) { throw "source archive failed with exit code $LASTEXITCODE" }

@@ -48,12 +48,20 @@ dev = [
 windows-package = [
   "pyinstaller==6.16.0",
 ]
+model-converter = [
+  "ultralytics==8.4.215",
+  "torch==2.15.0",
+  "torchvision==0.29.2",
+  "onnx==1.23.2",
+  "pyyaml==6.0.3",
+]
 
 [project.urls]
 Repository = "https://github.com/Rafael-Del-Valle/ReefVision-Edge"
 
 [project.scripts]
 reefvision-edge = "reefvision_edge.cli:main"
+reefvision-edge-model-converter = "reefvision_edge.converter_worker:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

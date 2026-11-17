@@ -67,6 +67,7 @@
         <Directory Id="EdgeProgramsFolder" Name="Programs">
           <Directory Id="INSTALLFOLDER" Name="ReefVision-Edge">
             <Directory Id="BackendDir" Name="backend" />
+            <Directory Id="ConverterDir" Name="converter" />
           </Directory>
         </Directory>
       </Directory>
@@ -118,6 +119,7 @@
       <ComponentRef Id="ReefVisionEdgeLauncher" />
       <ComponentRef Id="ReefVisionEdgeStartMenuShortcut" />
       <ComponentGroupRef Id="BackendPayload" />
+      <ComponentGroupRef Id="ConverterPayload" />
     </Feature>
   </Product>
 </Wix>

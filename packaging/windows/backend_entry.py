@@ -50,6 +50,16 @@ def main() -> None:
         print(json.dumps(runtime_diagnostics(), sort_keys=True))
         return
     settings = settings_from_argv()
+    if getattr(sys, "frozen", False) and settings.converter_command is None:
+        converter = (
+            Path(sys.executable).parents[2]
+            / "converter"
+            / "reefvision-edge-model-converter"
+            / "reefvision-edge-model-converter.exe"
+        )
+        if not converter.is_file():
+            raise SystemExit(f"The packaged model converter is missing: {converter}")
+        settings = settings.model_copy(update={"converter_command": (str(converter),)})
     if settings.bind_host != "127.0.0.1":
         raise SystemExit("The packaged desktop backend only accepts --host 127.0.0.1.")
     uvicorn.run(

@@ -199,6 +199,9 @@ class ModelImportService:
         )
         log = (job_dir / f"{operation}.log").open("ab")
         creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        converter_environment = os.environ.copy()
+        converter_environment["ULTRALYTICS_OFFLINE"] = "true"
+        converter_environment["YOLO_CONFIG_DIR"] = str(job_dir / "ultralytics-config")
         try:
             process = subprocess.Popen(
                 command,
@@ -206,6 +209,7 @@ class ModelImportService:
                 stderr=subprocess.STDOUT,
                 cwd=Path.cwd(),
                 creationflags=creation_flags,
+                env=converter_environment,
             )
         except OSError as exc:
             failed = replace(

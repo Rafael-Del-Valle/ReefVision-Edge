@@ -9,6 +9,10 @@ The Python service and React dashboard are served from one origin. It binds to `
 ## What v0.1 supports
 
 - Local `.onnx` object detectors with explicit class, input, preprocessing, and output metadata.
+- Explicitly trusted Ultralytics YOLOv8 detection `.pt` imports through a separately
+  packaged, offline converter. Other tasks and checkpoint families are rejected.
+- Full-frame inference and an optional thesis profile using 1920 × 1344 source tiles,
+  40% overlap, source-coordinate restoration, and class-aware duplicate merging.
 - `ultralytics_yolo_detect_v1`: fixed NCHW RGB float32 input, centered letterbox, `[1, 4 + classes, candidates]` output, `xywh` input-pixel boxes, and per-class confidence values.
 - ONNX Runtime graph-assignment evidence stored in every session/export, including per-provider node counts and explicit CPU fallback. CPU is the portable baseline; runtimes that cannot expose assignment evidence are labeled `assignment unavailable` instead of making an acceleration claim.
 - Immutable copies of local AVI, MP4, MOV, M4V, and MKV uploads, subject to the codecs in the installed OpenCV/FFmpeg build.
@@ -68,13 +72,32 @@ Then register the resulting `best.onnx` with metadata like:
 }
 ```
 
-Edge validates the input/output tensors with a dry run and records SHA-256 hashes for both files. It clearly rejects PyTorch checkpoints, dynamic inputs, mismatched class maps, objectness-bearing outputs, and post-NMS exports. The included deterministic test model exercises this exact path without downloading weights.
+Edge validates the input/output tensors with a dry run and records SHA-256 hashes for both files. It rejects dynamic inputs, mismatched class maps, objectness-bearing outputs, and post-NMS exports. Direct ONNX registration remains available under **Models**.
+
+### Import a trusted YOLOv8 checkpoint
+
+Open **Models**, choose a local `.pt`, optionally add its matching `args.yaml` or
+`data.yaml`, and explicitly confirm that the file is trusted. The separate converter
+loads the checkpoint, reports its task, family, labels, and input shape for review,
+then requires a second confirmation before exporting static FP32 ONNX with external
+NMS. The original checkpoint, optional configuration, derived ONNX, hashes, ordered
+classes, preprocessing, thresholds, exporter version, and runtime versions remain
+together in the per-user model registry. Conversion never blocks Monitor and runs with
+Ultralytics offline mode enabled.
+
+The distributable Windows converter is pinned by
+`packaging/windows/model-converter.lock` for CPython 3.12/Windows x64. Its reviewed
+license inventory is `packaging/windows/model-converter-licenses.json`; the build
+copies every wheel's license/notice files and fails if a reviewed license is missing.
+Ultralytics and ReefVision-Edge are distributed under AGPL terms. PyTorch is
+Apache-2.0 with its bundled third-party terms. Research weights and media are excluded
+from Git and release assets.
 
 ## Field operation
 
-1. Open **Monitor** and expand **Register model or source**.
-2. Register the ONNX file plus metadata JSON.
-3. Import recorded footage or connect a Linux V4L2 device.
+1. Open **Models** and register ONNX directly or import a trusted YOLOv8 checkpoint.
+2. Open **Monitor** and expand **Register a source**.
+3. Import recorded footage or connect a supported capture device.
 4. Select the model/source, choose the sampling interval, and start inference.
 5. Watch boxes, class labels, scores, frame counts, effective FPS, latency, dropped frames, provider, and state.
 6. Stop a live job when finished. Open prior runs under **Sessions** and download an export.
@@ -149,7 +172,7 @@ Run the matching script on the same OS/CPU architecture and Python minor version
 ./scripts/build_offline_bundle.sh .artifacts/reefvision-edge-offline cpu
 ```
 
-The Windows builder accepts `cuda` (ONNX Runtime GPU 1.32.0, CUDA 13.4, cuDNN 9) or `cpu`. Both profiles are exact, SHA-256 locked, and stored with the ReefVision-Edge wheel (including the dashboard), dependency/build wheels, source archive, commit metadata, and checksums. Windows CUDA setup is therefore reproducible from the resulting local bundle and does not download libraries when the application runs. On an offline target, install the app wheels and then `runtime.lock`.
+The Windows builder accepts `cuda` (ONNX Runtime GPU 1.32.0, CUDA 13.4, cuDNN 9) or `cpu`. Both profiles are exact, SHA-256 locked, and stored with the ReefVision-Edge wheel (including the dashboard), dependency/build wheels, the separately locked converter wheels and licenses, source archive, commit metadata, and checksums. Windows CUDA and model conversion are therefore reproducible from the resulting local bundle and do not download libraries when the application runs. On an offline target, install the app wheels and then `runtime.lock`.
 
 ```bash
 python3 -m venv .venv
@@ -160,7 +183,7 @@ For Jetson, pass the separate `jetson` profile. It intentionally omits desktop O
 
 ## Windows desktop MSI
 
-The Windows x64 MSI installs a self-contained desktop build for the current user. It includes the local Python service, dashboard assets, native inference dependencies, a WebView launcher, and a Start-menu shortcut; the installed app does not use the source checkout, a development server, or runtime downloads.
+The Windows x64 MSI installs a self-contained desktop build for the current user. It includes the local Python service, dashboard assets, native inference dependencies, the isolated model converter and its license inventory, a WebView launcher, and a Start-menu shortcut; the installed app does not use the source checkout, a development server, or runtime downloads.
 
 ```powershell
 .\scripts\build_windows_msi.ps1 `

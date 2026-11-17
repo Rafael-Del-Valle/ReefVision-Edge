@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import zipfile
@@ -196,3 +197,69 @@ def test_installed_acceptance_requires_new_uploads_and_uninstall_isolation() -> 
     assert "msiexec.exe" in uninstall
     assert "CodexMsiIsolationSentinel" in uninstall
     assert "ReefVision-Edge.exe" in uninstall
+
+
+def test_model_converter_lock_is_exact_hashed_windows_python_312_closure() -> None:
+    lock = WINDOWS / "model-converter.lock"
+    lines = [
+        line.strip()
+        for line in lock.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+    assert "ultralytics==8.4.215" in "\n".join(lines)
+    assert "torch==2.15.0" in "\n".join(lines)
+    assert "torchvision==0.29.2" in "\n".join(lines)
+    assert "onnx==1.23.2" in "\n".join(lines)
+    assert len(lines) >= 40
+    assert all(
+        re.fullmatch(r"[a-zA-Z0-9_.-]+==[^ ]+ --hash=sha256:[0-9a-f]{64}", line)
+        for line in lines
+    )
+
+
+def test_converter_license_review_covers_every_locked_distribution() -> None:
+    lock_names = {
+        line.split("==", 1)[0].casefold().replace("_", "-")
+        for line in (WINDOWS / "model-converter.lock")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line and not line.startswith("#")
+    }
+    review = json.loads(
+        (WINDOWS / "model-converter-licenses.json").read_text(encoding="utf-8")
+    )
+    reviewed = {
+        item["name"].casefold().replace("_", "-") for item in review["packages"]
+    }
+
+    assert reviewed == lock_names
+    assert all(item["redistribution_reviewed"] is True for item in review["packages"])
+    assert all(item["license"] for item in review["packages"])
+    assert review["project_license"] == "AGPL-3.0-only"
+    assert review["ultralytics_license"] == "AGPL-3.0-only"
+    fallback = WINDOWS / review["packages_by_name"]["nvidia-ml-py"]["license_file"]
+    assert fallback.is_file()
+    assert "Redistribution and use" in fallback.read_text(encoding="utf-8")
+
+
+def test_converter_bundle_and_msi_fail_closed_and_exclude_research_files() -> None:
+    converter = (ROOT / "scripts" / "build_windows_converter_bundle.ps1").read_text(
+        encoding="utf-8"
+    )
+    offline = (ROOT / "scripts" / "build_offline_bundle.ps1").read_text(
+        encoding="utf-8"
+    )
+    msi = (ROOT / "scripts" / "build_windows_msi.ps1").read_text(encoding="utf-8")
+    spec = (WINDOWS / "reefvision-edge-model-converter.spec").read_text(
+        encoding="utf-8"
+    )
+
+    assert "--require-hashes" in converter
+    assert "model-converter-licenses.json" in converter
+    assert "converter-wheels" in offline
+    assert "reefvision-edge-model-converter.exe" in msi
+    assert "converter-licenses" in msi
+    assert "converter_worker.py" in spec
+    assert "ULTRALYTICS_OFFLINE" in msi
+    assert all(extension in offline for extension in ("*.pt", "*.pth", "*.onnx"))
