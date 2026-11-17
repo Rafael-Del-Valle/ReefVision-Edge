@@ -67,6 +67,33 @@ def test_windows_capture_keeps_actual_four_by_three_frame_when_modes_are_rejecte
     assert first_frame.shape == (480, 640, 3)
 
 
+def test_windows_capture_negotiation_failure_releases_camera(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingCapture:
+        released = False
+
+        def isOpened(self) -> bool:
+            return True
+
+        def set(self, _prop: int, _value: float) -> bool:
+            raise RuntimeError("driver rejected property")
+
+        def release(self) -> None:
+            self.released = True
+
+    capture = FailingCapture()
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        "reefvision_edge.sources.cv2.VideoCapture", lambda *_args: capture
+    )
+    frames = WindowsCameraSource(0, backend="dshow").frames()
+
+    with pytest.raises(SourceError, match="could not negotiate a capture mode"):
+        next(frames)
+    assert capture.released is True
+
+
 def media_store(tmp_path: Path) -> MediaStore:
     database = Database(tmp_path / "edge.sqlite3")
     database.initialize()

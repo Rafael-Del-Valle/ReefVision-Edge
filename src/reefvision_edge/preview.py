@@ -17,6 +17,9 @@ from numpy.typing import NDArray
 from reefvision_edge.domain import Detection, OverlaySettings
 from reefvision_edge.monitor_video import render_monitor_frame
 
+PREVIEW_MAX_WIDTH = 1280
+PREVIEW_MAX_HEIGHT = 720
+
 
 @dataclass(frozen=True)
 class PreviewFrame:
@@ -43,6 +46,18 @@ def draw_overlay(
         detections,
         None,
         OverlaySettings(timer=False, boxes=True, labels=True),
+    )
+
+
+def fit_browser_preview(frame: NDArray[np.uint8]) -> NDArray[np.uint8]:
+    """Bound browser decode work without changing the source aspect ratio."""
+    height, width = frame.shape[:2]
+    scale = min(PREVIEW_MAX_WIDTH / width, PREVIEW_MAX_HEIGHT / height, 1.0)
+    if scale >= 1.0:
+        return frame
+    size = (max(1, round(width * scale)), max(1, round(height * scale)))
+    return np.asarray(
+        cv2.resize(frame, size, interpolation=cv2.INTER_AREA), dtype=np.uint8
     )
 
 
@@ -79,6 +94,7 @@ class PreviewStore:
         rendered = render_monitor_frame(
             frame, detections, timestamp_ms, settings or OverlaySettings()
         )
+        rendered = fit_browser_preview(rendered)
         encoded, buffer = cv2.imencode(".jpg", rendered, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if not encoded:
             raise RuntimeError("Preview JPEG encoding failed.")

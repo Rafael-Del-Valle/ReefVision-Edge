@@ -303,6 +303,29 @@ def test_preview_overlay_draws_box_at_original_coordinates() -> None:
     assert tuple(frame[30, 20]) == (0, 0, 0)
 
 
+def test_preview_store_scales_image_and_overlay_together_for_browser_delivery(
+    tmp_path: Path,
+) -> None:
+    from reefvision_edge.domain import Detection
+
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    store = PreviewStore(tmp_path / "previews")
+
+    preview = store.put(
+        "wide-session",
+        1,
+        10.0,
+        frame,
+        (Detection(0, "coral", 0.9, (300.0, 300.0, 600.0, 600.0)),),
+        OverlaySettings(timer=False, boxes=True, labels=False),
+    )
+    decoded = cv2.imdecode(np.frombuffer(preview.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    assert decoded.shape == (720, 1280, 3)
+    assert np.any(decoded[198:203, 198:203] != 0)
+    assert not np.any(frame)
+
+
 def test_latest_preview_publisher_limits_rate_and_flushes_newest_frame(
     tmp_path: Path,
 ) -> None:

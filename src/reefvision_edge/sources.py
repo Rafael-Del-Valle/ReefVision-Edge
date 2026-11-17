@@ -235,7 +235,13 @@ class WindowsCameraSource:
         if not capture.isOpened():
             capture.release()
             raise SourceError(f"Camera {self.identifier} could not be opened.")
-        first_frame = configure_windows_capture(capture)
+        try:
+            first_frame = configure_windows_capture(capture)
+        except Exception as exc:
+            capture.release()
+            raise SourceError(
+                f"Camera {self.identifier} could not negotiate a capture mode: {exc}"
+            ) from exc
         latest: NewestFrameQueue[SourceFrame] = NewestFrameQueue(queue_size)
         stopped = threading.Event()
         producer_done = threading.Event()
