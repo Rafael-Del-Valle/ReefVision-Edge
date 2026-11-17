@@ -14,6 +14,7 @@ from reefvision_edge.config import Settings, require_safe_bind
 from reefvision_edge.db import Database
 from reefvision_edge.exports import ExportService
 from reefvision_edge.media_store import MediaStore
+from reefvision_edge.model_imports import ModelImportService
 from reefvision_edge.model_registry import ModelRegistry
 from reefvision_edge.monitor import MonitorPreviewService
 from reefvision_edge.preview import PreviewStore
@@ -31,6 +32,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         resolved.models_dir,
         max_model_bytes=resolved.max_model_upload_bytes,
     )
+    model_imports = ModelImportService(
+        model_registry,
+        resolved.model_imports_dir,
+        converter_command=resolved.converter_command,
+        max_checkpoint_bytes=resolved.max_model_upload_bytes,
+        max_config_bytes=resolved.max_model_config_bytes,
+    )
     media_store = MediaStore(
         database,
         resolved.media_dir,
@@ -47,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            model_imports.shutdown()
             monitor.shutdown()
             sessions.shutdown(timeout=5)
 
@@ -54,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.state.database = database
     app.state.model_registry = model_registry
+    app.state.model_imports = model_imports
     app.state.media_store = media_store
     app.state.previews = previews
     app.state.runner = runner
@@ -73,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         create_api_router(
             resolved,
             model_registry,
+            model_imports,
             media_store,
             sessions,
             previews,

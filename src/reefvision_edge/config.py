@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     auth_password: str | None = None
     max_model_upload_bytes: int = Field(default=512 * 1024 * 1024, ge=1)
     max_video_upload_bytes: int = Field(default=256 * 1024 * 1024 * 1024, ge=1)
+    max_model_config_bytes: int = Field(default=4 * 1024 * 1024, ge=1)
+    converter_command: tuple[str, ...] | None = None
 
     @property
     def database_path(self) -> Path:
@@ -43,6 +45,10 @@ class Settings(BaseSettings):
     @property
     def recordings_dir(self) -> Path:
         return self.data_dir / "recordings"
+
+    @property
+    def model_imports_dir(self) -> Path:
+        return self.data_dir / "model-imports"
 
     @property
     def is_loopback(self) -> bool:

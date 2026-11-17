@@ -15,6 +15,7 @@ from reefvision_edge.config import Settings
 from reefvision_edge.domain import OverlaySettings, RegisteredModel
 from reefvision_edge.exports import ExportError, ExportService
 from reefvision_edge.media_store import MediaStore
+from reefvision_edge.model_imports import ModelImportError, ModelImportService
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
 from reefvision_edge.monitor import MonitorPreviewService
 from reefvision_edge.monitor_video import overlay_capabilities
@@ -41,6 +42,12 @@ class SessionRequest(BaseModel):
 
 class MonitorSelectRequest(BaseModel):
     source_id: str = Field(min_length=1)
+
+
+class ModelConvertRequest(BaseModel):
+    model_name: str = Field(min_length=1, max_length=160)
+    confidence_threshold: float = Field(default=0.25, ge=0, le=1)
+    iou_threshold: float = Field(default=0.45, ge=0, le=1)
 
 
 def error_response(status_code: int, code: str, message: str) -> JSONResponse:
@@ -90,6 +97,7 @@ def source_response(source: dict[str, object]) -> dict[str, object]:
 def create_api_router(
     settings: Settings,
     model_registry: ModelRegistry,
+    model_imports: ModelImportService,
     media_store: MediaStore,
     sessions: SessionService,
     previews: PreviewStore,
@@ -139,6 +147,53 @@ def create_api_router(
             return model_response(registered)
         except (json.JSONDecodeError, ValueError, ModelRegistrationError) as exc:
             return error_response(422, "invalid_model", str(exc))
+
+    @router.get("/model-imports")
+    def list_model_imports() -> list[dict[str, object]]:
+        return [asdict(record) for record in model_imports.list()]
+
+    @router.get("/model-imports/{import_id}", response_model=None)
+    def get_model_import(import_id: str) -> dict[str, object] | JSONResponse:
+        try:
+            return asdict(model_imports.get(import_id))
+        except ModelImportError as exc:
+            return error_response(404, "model_import_not_found", str(exc))
+
+    @router.post("/model-imports", status_code=202, response_model=None)
+    def inspect_model_import(
+        checkpoint: UploadFile,
+        trusted: bool = Form(default=False),
+        configuration: UploadFile | None = None,
+    ) -> dict[str, object] | JSONResponse:
+        try:
+            record = model_imports.inspect(
+                checkpoint.file,
+                checkpoint.filename or "checkpoint.pt",
+                trusted=trusted,
+                config_stream=configuration.file if configuration else None,
+                config_filename=configuration.filename if configuration else None,
+            )
+            return asdict(record)
+        except ModelImportError as exc:
+            return error_response(422, "invalid_checkpoint_import", str(exc))
+
+    @router.post(
+        "/model-imports/{import_id}/convert", status_code=202, response_model=None
+    )
+    def convert_model_import(
+        import_id: str, request: ModelConvertRequest
+    ) -> dict[str, object] | JSONResponse:
+        try:
+            return asdict(
+                model_imports.convert(
+                    import_id,
+                    model_name=request.model_name,
+                    confidence_threshold=request.confidence_threshold,
+                    iou_threshold=request.iou_threshold,
+                )
+            )
+        except ModelImportError as exc:
+            return error_response(409, "invalid_checkpoint_state", str(exc))
 
     @router.get("/sources")
     def list_sources() -> list[dict[str, object]]:

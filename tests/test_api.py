@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 import zipfile
 from io import BytesIO
@@ -13,6 +14,8 @@ from tests.test_model_registry import valid_metadata
 
 from reefvision_edge.app import create_app
 from reefvision_edge.config import Settings
+
+FAKE_CONVERTER = Path(__file__).parent / "fixtures" / "fake_converter.py"
 
 
 def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
@@ -181,3 +184,71 @@ def test_capabilities_and_settings_report_runtime_without_secrets(tmp_path: Path
     assert settings["auth_required"] is False
     assert settings["data_dir"] == str(tmp_path / "data")
     assert "auth_password" not in settings
+
+
+def test_api_inspects_then_converts_trusted_checkpoint_without_blocking_health(
+    tmp_path: Path,
+) -> None:
+    client = TestClient(
+        create_app(
+            Settings(
+                data_dir=tmp_path / "data",
+                converter_command=(sys.executable, str(FAKE_CONVERTER)),
+            )
+        ),
+        base_url="http://127.0.0.1",
+    )
+
+    untrusted = client.post(
+        "/api/model-imports",
+        files={"checkpoint": ("best.pt", b"checkpoint", "application/octet-stream")},
+        data={"trusted": "false"},
+    )
+    assert untrusted.status_code == 422
+    assert "trusted" in untrusted.json()["error"]["message"]
+
+    response = client.post(
+        "/api/model-imports",
+        files={
+            "checkpoint": ("best.pt", b"slow checkpoint", "application/octet-stream"),
+            "configuration": ("args.yaml", b"imgsz: 640\n", "application/yaml"),
+        },
+        data={"trusted": "true"},
+    )
+    assert response.status_code == 202
+    import_id = response.json()["id"]
+    assert response.json()["status"] == "inspecting"
+    assert client.get("/api/health").status_code == 200
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        inspected = client.get(f"/api/model-imports/{import_id}").json()
+        if inspected["status"] != "inspecting":
+            break
+        time.sleep(0.02)
+    assert inspected["status"] == "awaiting_confirmation"
+    assert inspected["inspection"]["task"] == "detect"
+    assert inspected["inspection"]["class_names"] == [
+        "coral-open",
+        "coral-closed",
+    ]
+
+    converting = client.post(
+        f"/api/model-imports/{import_id}/convert",
+        json={
+            "model_name": "Synthetic thesis detector",
+            "confidence_threshold": 0.25,
+            "iou_threshold": 0.45,
+        },
+    )
+    assert converting.status_code == 202
+    while time.monotonic() < deadline:
+        completed = client.get(f"/api/model-imports/{import_id}").json()
+        if completed["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.02)
+    assert completed["status"] == "completed"
+    models = client.get("/api/models").json()
+    assert models[0]["name"] == "Synthetic thesis detector"
+    assert models[0]["source_format"] == "ultralytics_pt"
+    assert models[0]["classes"] == {"0": "coral-open", "1": "coral-closed"}
