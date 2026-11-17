@@ -179,9 +179,9 @@ class LatestPreviewPublisher:
         # Camera clocks commonly report 29.97 FPS while arriving with a few
         # tenths of a millisecond of jitter. Requiring the full nominal 30 FPS
         # interval causes alternating frames to miss the deadline, collapsing
-        # a smooth feed to roughly 15 FPS. A small scheduling allowance keeps
-        # those source frames while a 60 FPS source is still bounded near 30.
-        self.publish_interval = self.interval * 0.9
+        # a smooth feed to roughly 15 FPS. Permit a small early arrival, but
+        # advance the nominal phase so that the long-run rate stays bounded.
+        self.early_arrival_allowance = self.interval * 0.1
         self.clock = clock
         self._next_publish_at = 0.0
         self._pending: _PendingPreview | None = None
@@ -201,7 +201,10 @@ class LatestPreviewPublisher:
             detections,
         )
         now = self.clock()
-        if self._published_frame_index is None or now >= self._next_publish_at:
+        if (
+            self._published_frame_index is None
+            or now + self.early_arrival_allowance >= self._next_publish_at
+        ):
             return self._publish(now)
         return False
 
@@ -221,5 +224,5 @@ class LatestPreviewPublisher:
             self.settings,
         )
         self._published_frame_index = pending.frame_index
-        self._next_publish_at = now + self.publish_interval
+        self._next_publish_at = max(now, self._next_publish_at) + self.interval
         return True

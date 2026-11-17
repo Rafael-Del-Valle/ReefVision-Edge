@@ -361,18 +361,19 @@ def test_latest_preview_publisher_limits_rate_and_flushes_newest_frame(
     assert not publisher.flush()
 
 
+class RecordingPreviewStore:
+    def __init__(self) -> None:
+        self.frame_indexes: list[int] = []
+
+    def put(self, _session_id, frame_index, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+        self.frame_indexes.append(frame_index)
+
+
 def test_latest_preview_publisher_does_not_halve_a_30_fps_camera() -> None:
     from reefvision_edge.preview import LatestPreviewPublisher
 
-    class RecordingStore:
-        def __init__(self) -> None:
-            self.frame_indexes: list[int] = []
-
-        def put(self, _session_id, frame_index, *_args, **_kwargs):  # type: ignore[no-untyped-def]
-            self.frame_indexes.append(frame_index)
-
     clock = [100.0]
-    store = RecordingStore()
+    store = RecordingPreviewStore()
     publisher = LatestPreviewPublisher(
         store,  # type: ignore[arg-type]
         "camera-session",
@@ -386,7 +387,33 @@ def test_latest_preview_publisher_does_not_halve_a_30_fps_camera() -> None:
         publisher.offer(frame_index, frame_index * 33.0, frame, ())
         clock[0] += 0.033
 
-    assert store.frame_indexes == list(range(30))
+    assert len(store.frame_indexes) >= 28
+
+
+@pytest.mark.parametrize("source_interval", [0.030, 1 / 35, 1 / 60])
+def test_latest_preview_publisher_enforces_long_run_rate_limit(
+    source_interval: float,
+) -> None:
+    from reefvision_edge.preview import LatestPreviewPublisher
+
+    clock = [100.0]
+    store = RecordingPreviewStore()
+    publisher = LatestPreviewPublisher(
+        store,  # type: ignore[arg-type]
+        "camera-session",
+        OverlaySettings(timer=False, boxes=False, labels=False),
+        max_fps=30.0,
+        clock=lambda: clock[0],
+    )
+    frame = np.zeros((12, 18, 3), dtype=np.uint8)
+    offers = int(10 / source_interval) + 1
+
+    for frame_index in range(offers):
+        publisher.offer(frame_index, frame_index * source_interval * 1000, frame, ())
+        clock[0] += source_interval
+
+    elapsed = (offers - 1) * source_interval
+    assert len(store.frame_indexes) <= int(elapsed * 30) + 2
 
 
 def test_runner_bounds_concurrent_work_and_shutdown_cancels_active_job(
