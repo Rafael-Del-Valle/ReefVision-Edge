@@ -71,7 +71,6 @@ interface MonitorProps {
   onStart: (options: SessionCreateOptions) => Promise<void>;
   onStop: (sessionId: string) => Promise<void>;
   onPreview: (sourceId: string) => Promise<void>;
-  onModelUpload: (model: File, metadata: File) => Promise<void>;
   onVideoUpload: (video: File) => Promise<void>;
   onCamera: (device: string) => Promise<void>;
   onRefreshCameras: () => Promise<void>;
@@ -145,7 +144,6 @@ export function Monitor({
   onStart,
   onStop,
   onPreview,
-  onModelUpload,
   onVideoUpload,
   onCamera,
   onRefreshCameras,
@@ -222,24 +220,6 @@ export function Monitor({
     } finally {
       setBusy(null);
     }
-  }
-
-  async function uploadModel(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const model = form.get("model-file");
-    const metadata = form.get("metadata-file");
-    if (
-      !(model instanceof File) ||
-      !(metadata instanceof File) ||
-      !model.size ||
-      !metadata.size
-    ) {
-      setActionError("Choose both an ONNX model and its JSON metadata.");
-      return;
-    }
-    await act("model", () => onModelUpload(model, metadata));
-    event.currentTarget.reset();
   }
 
   async function uploadVideo(event: FormEvent<HTMLFormElement>) {
@@ -580,25 +560,7 @@ export function Monitor({
           </div>
 
           <details className="panel import-panel">
-            <summary>Register model or source</summary>
-            <form onSubmit={(event) => void uploadModel(event)}>
-              <h4>Local ONNX model</h4>
-              <label>
-                <span>ONNX file</span>
-                <input name="model-file" type="file" accept=".onnx" />
-              </label>
-              <label>
-                <span>Metadata JSON</span>
-                <input
-                  name="metadata-file"
-                  type="file"
-                  accept="application/json,.json"
-                />
-              </label>
-              <button className="secondary" disabled={busy !== null}>
-                {busy === "model" ? "Validating…" : "Register model"}
-              </button>
-            </form>
+            <summary>Register a source</summary>
             <form onSubmit={(event) => void uploadVideo(event)}>
               <h4>Recorded video</h4>
               <label>

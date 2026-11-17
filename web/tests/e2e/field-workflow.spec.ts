@@ -37,16 +37,19 @@ test.describe.serial("ReefVision-Edge field workflow", () => {
     await expect(
       page.getByRole("heading", { name: "Field monitor" }),
     ).toBeVisible();
-    await page.getByText("Register model or source").click();
-
+    await page.getByRole("tab", { name: "Models" }).click();
     await page
-      .getByLabel("ONNX file")
+      .getByLabel("ONNX model")
       .setInputFiles(path.join(fixtures, "tiny.onnx"));
     await page
-      .getByLabel("Metadata JSON")
+      .getByLabel("Model metadata")
       .setInputFiles(path.join(fixtures, "metadata.json"));
-    await page.getByRole("button", { name: "Register model" }).click();
+    await page.getByRole("button", { name: "Register ONNX" }).click();
+    await expect(page.getByText("Tiny Coral Detector")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Monitor" }).click();
     await expect(page.getByLabel("Model")).toContainText("Tiny Coral Detector");
+    await page.getByText("Register a source").click();
 
     await page
       .getByLabel("Video file")
@@ -63,7 +66,9 @@ test.describe.serial("ReefVision-Edge field workflow", () => {
     await expect(metrics).toContainText("3");
     await expect(metrics).toContainText("6");
     await expect(
-      page.getByAltText("Latest inference frame with detection overlays"),
+      page.getByRole("img", {
+        name: "Latest inference frame with detection overlays",
+      }),
     ).toBeVisible();
 
     await page.reload();

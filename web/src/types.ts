@@ -3,6 +3,8 @@ export type SessionStatus =
 
 export type ComputeDevice = "auto" | "nvidia" | "cpu";
 
+export type InferenceProfile = "full_frame" | "thesis_tiling";
+
 export interface OverlaySettings {
   timer: boolean;
   trails: boolean;
@@ -66,6 +68,39 @@ export interface ModelRecord {
   metadata_sha256: string;
   provider: string;
   available_providers: string[];
+  source_format?: "onnx" | "ultralytics_pt";
+  source_sha256?: string;
+  conversion?: Record<string, unknown> | null;
+  supported_profiles?: InferenceProfile[];
+}
+
+export interface ModelImportInspection {
+  task: string;
+  architecture_family: string;
+  class_names: string[];
+  input_width: number;
+  input_height: number;
+  supported: boolean;
+  source_sha256: string;
+  versions: Record<string, string>;
+}
+
+export interface ModelImportRecord {
+  id: string;
+  status:
+    | "inspecting"
+    | "awaiting_confirmation"
+    | "converting"
+    | "completed"
+    | "failed"
+    | "interrupted";
+  filename: string;
+  source_sha256: string;
+  inspection: ModelImportInspection | null;
+  error: string | null;
+  model_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SourceRecord {

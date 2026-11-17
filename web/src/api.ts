@@ -2,6 +2,7 @@ import type {
   Capabilities,
   CaptureDevice,
   MonitorStatus,
+  ModelImportRecord,
   ModelRecord,
   PublicSettings,
   SessionRecord,
@@ -50,6 +51,38 @@ export const api = {
     body.append("metadata_json", await metadata.text());
     return request<ModelRecord>("/api/models", { method: "POST", body });
   },
+  inspectModelImport: (
+    checkpoint: File,
+    configuration?: File,
+  ): Promise<ModelImportRecord> => {
+    const body = new FormData();
+    body.append("checkpoint", checkpoint);
+    body.append("trusted", "true");
+    if (configuration) body.append("configuration", configuration);
+    return request<ModelImportRecord>("/api/model-imports", {
+      method: "POST",
+      body,
+    });
+  },
+  modelImport: (id: string) =>
+    request<ModelImportRecord>(`/api/model-imports/${id}`),
+  convertModelImport: (
+    id: string,
+    options: {
+      modelName: string;
+      confidenceThreshold: number;
+      iouThreshold: number;
+    },
+  ) =>
+    request<ModelImportRecord>(`/api/model-imports/${id}/convert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model_name: options.modelName,
+        confidence_threshold: options.confidenceThreshold,
+        iou_threshold: options.iouThreshold,
+      }),
+    }),
   importVideo: (video: File): Promise<SourceRecord> => {
     const body = new FormData();
     body.append("video", video);

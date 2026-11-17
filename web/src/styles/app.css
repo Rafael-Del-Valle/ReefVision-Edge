@@ -661,6 +661,120 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
+.models-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 20px;
+  align-items: start;
+}
+.models-side {
+  display: grid;
+  gap: 20px;
+}
+.model-import-card,
+.model-list-card {
+  padding: 24px;
+}
+.model-import-card h3,
+.model-list-card h3 {
+  margin: 6px 0 12px;
+}
+.model-import-card input[type="file"] {
+  padding: 7px;
+  font-size: 11px;
+}
+.trust-check {
+  margin: 18px 0 !important;
+}
+.inspection-card {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rv-border);
+}
+.inspection-title,
+.inspection-title > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.inspection-title > div {
+  flex-direction: column;
+}
+.inspection-title span,
+.inspection-card dt,
+.model-list-card span,
+.model-list-card small {
+  color: var(--rv-muted);
+  font-size: 10px;
+}
+.inspection-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 18px 0;
+}
+.inspection-card dl > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--rv-border);
+  border-radius: 8px;
+}
+.inspection-card dd {
+  margin: 0;
+  font-size: 12px;
+}
+.class-list,
+.model-list-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.class-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.class-list li {
+  display: inline-flex;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--rv-panel-soft);
+  color: var(--rv-muted-strong);
+  font-size: 11px;
+}
+.class-list li span {
+  color: var(--rv-accent);
+}
+.conversion-options {
+  margin-top: 20px;
+}
+.threshold-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.progress-note,
+.success-note {
+  margin: 18px 0 0;
+  color: var(--rv-info);
+  font-size: 11px;
+}
+.success-note {
+  color: var(--rv-success);
+}
+.model-list-card li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rv-border);
+}
+.model-list-card li > div {
+  display: grid;
+  gap: 4px;
+}
 .settings-card {
   min-height: 230px;
   padding: 24px;
@@ -800,6 +914,9 @@ footer {
     display: none;
   }
   .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+  .models-grid {
     grid-template-columns: 1fr;
   }
   .control-stack {

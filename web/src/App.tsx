@@ -12,10 +12,11 @@ import type {
   SourceRecord,
 } from "./types";
 import { Monitor } from "./views/Monitor";
+import { Models } from "./views/Models";
 import { Sessions } from "./views/Sessions";
 import { Settings } from "./views/Settings";
 
-type View = "monitor" | "sessions" | "settings";
+type View = "monitor" | "models" | "sessions" | "settings";
 
 interface StationData {
   models: ModelRecord[];
@@ -181,16 +182,18 @@ export function App() {
           </div>
         </div>
         <nav role="tablist" aria-label="Primary views">
-          {(["monitor", "sessions", "settings"] as const).map((item) => (
-            <button
-              key={item}
-              role="tab"
-              aria-selected={view === item}
-              onClick={() => setView(item)}
-            >
-              {item[0].toUpperCase() + item.slice(1)}
-            </button>
-          ))}
+          {(["monitor", "models", "sessions", "settings"] as const).map(
+            (item) => (
+              <button
+                key={item}
+                role="tab"
+                aria-selected={view === item}
+                onClick={() => setView(item)}
+              >
+                {item[0].toUpperCase() + item.slice(1)}
+              </button>
+            ),
+          )}
         </nav>
         <div className="topbar-status">
           <span className="connection-light" />
@@ -222,17 +225,6 @@ export function App() {
             onStop={async (id) => {
               await api.stopSession(id);
               await pollActiveState();
-            }}
-            onModelUpload={async (model, metadata) => {
-              const registered = await api.registerModel(model, metadata);
-              setData((current) =>
-                current
-                  ? {
-                      ...current,
-                      models: upsertById(current.models, registered),
-                    }
-                  : current,
-              );
             }}
             onVideoUpload={async (video) => {
               const imported = await api.importVideo(video);
@@ -269,6 +261,19 @@ export function App() {
             models={data.models}
             sources={data.sources}
             onOpen={openSession}
+          />
+        ) : null}
+        {view === "models" ? (
+          <Models
+            models={data.models}
+            onModelRegistered={async (registered) => {
+              const models = registered
+                ? upsertById(data.models, registered)
+                : await api.models();
+              setData((current) =>
+                current ? { ...current, models } : current,
+              );
+            }}
           />
         ) : null}
         {view === "settings" ? (
