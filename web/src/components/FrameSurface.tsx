@@ -4,6 +4,8 @@ export interface FrameTelemetry {
   displayedFps: number;
   frameAgeMs: number | null;
   frameIndex: number | null;
+  frameWidth: number | null;
+  frameHeight: number | null;
 }
 
 interface FrameSurfaceProps {
@@ -63,6 +65,8 @@ export const FrameSurface = memo(function FrameSurface({
     let telemetryStartedAt = performance.now();
     let displayedFrames = 0;
     let lastDisplayedFrameIndex: number | null = null;
+    let frameWidth: number | null = null;
+    let frameHeight: number | null = null;
 
     async function pump() {
       while (!controller.signal.aborted) {
@@ -91,7 +95,10 @@ export const FrameSurface = memo(function FrameSurface({
                   ) {
                     canvas.width = bitmap.width;
                     canvas.height = bitmap.height;
+                    canvas.style.aspectRatio = `${bitmap.width} / ${bitmap.height}`;
                   }
+                  frameWidth = bitmap.width;
+                  frameHeight = bitmap.height;
                   context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
                   displayedFrames += 1;
                   lastDisplayedFrameIndex = frameIndex;
@@ -108,6 +115,8 @@ export const FrameSurface = memo(function FrameSurface({
                     ? null
                     : Math.max(0, Date.now() - publishedAt * 1000),
                 frameIndex,
+                frameWidth,
+                frameHeight,
               });
               telemetryStartedAt = now;
               displayedFrames = 0;

@@ -24,6 +24,40 @@ const defaultOverlays: OverlaySettings = {
   labels: true,
 };
 
+function loadOverlaySettings(key: string): OverlaySettings {
+  try {
+    const stored = window.localStorage.getItem(key);
+    if (!stored) return defaultOverlays;
+    const parsed = JSON.parse(stored) as Partial<OverlaySettings>;
+    return (Object.keys(defaultOverlays) as OverlayName[]).reduce(
+      (settings, name) => ({
+        ...settings,
+        [name]:
+          typeof parsed[name] === "boolean"
+            ? parsed[name]
+            : defaultOverlays[name],
+      }),
+      { ...defaultOverlays },
+    );
+  } catch {
+    return defaultOverlays;
+  }
+}
+
+function useOverlaySettings(key: string) {
+  const [settings, setSettings] = useState<OverlaySettings>(() =>
+    loadOverlaySettings(key),
+  );
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(settings));
+    } catch {
+      // Preferences remain usable for this page when browser storage is blocked.
+    }
+  }, [key, settings]);
+  return [settings, setSettings] as const;
+}
+
 interface MonitorProps {
   models: ModelRecord[];
   sources: SourceRecord[];
@@ -61,20 +95,29 @@ function OverlayControls({
   return (
     <fieldset className="overlay-controls">
       <legend>{title}</legend>
-      {(Object.keys(value) as OverlayName[]).map((name) => (
-        <label key={name} className="check-row">
-          <input
-            aria-label={`${prefix} ${name}`}
-            type="checkbox"
-            checked={value[name]}
-            disabled={!capabilities[name].supported}
-            onChange={(event) =>
-              onChange({ ...value, [name]: event.target.checked })
-            }
-          />
-          <span>{name[0].toUpperCase() + name.slice(1)}</span>
-        </label>
-      ))}
+      {(Object.keys(value) as OverlayName[]).map((name) => {
+        const unavailable = value[name] && !capabilities[name].supported;
+        return (
+          <div className="overlay-option" key={name}>
+            <label className="check-row">
+              <input
+                aria-label={`${prefix} ${name}`}
+                type="checkbox"
+                checked={value[name]}
+                onChange={(event) =>
+                  onChange({ ...value, [name]: event.target.checked })
+                }
+              />
+              <span>{name[0].toUpperCase() + name.slice(1)}</span>
+            </label>
+            {unavailable ? (
+              <small className="overlay-unavailable-reason">
+                {capabilities[name].reason}
+              </small>
+            ) : null}
+          </div>
+        );
+      })}
     </fieldset>
   );
 }
@@ -113,10 +156,12 @@ export function Monitor({
   const [computeDevice, setComputeDevice] = useState<ComputeDevice>("auto");
   const [recordData, setRecordData] = useState(true);
   const [recordMonitor, setRecordMonitor] = useState(false);
-  const [previewOverlays, setPreviewOverlays] =
-    useState<OverlaySettings>(defaultOverlays);
-  const [recordingOverlays, setRecordingOverlays] =
-    useState<OverlaySettings>(defaultOverlays);
+  const [previewOverlays, setPreviewOverlays] = useOverlaySettings(
+    "reefvision-edge.preview-overlays",
+  );
+  const [recordingOverlays, setRecordingOverlays] = useOverlaySettings(
+    "reefvision-edge.recording-overlays",
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cameraDevice, setCameraDevice] = useState("");
@@ -270,7 +315,7 @@ export function Monitor({
               <span className="quiet-chip">Idle</span>
             )}
           </div>
-          <div className="preview-stage">
+          <div className={`preview-stage${frameEndpoint ? " has-frame" : ""}`}>
             {frameEndpoint ? (
               <FrameSurface
                 endpoint={frameEndpoint}
@@ -315,6 +360,14 @@ export function Monitor({
               value={
                 frameTelemetry?.frameAgeMs != null
                   ? `${frameTelemetry.frameAgeMs.toFixed(0)} ms`
+                  : "—"
+              }
+            />
+            <Metric
+              label="Preview"
+              value={
+                frameTelemetry?.frameWidth && frameTelemetry.frameHeight
+                  ? `${frameTelemetry.frameWidth} × ${frameTelemetry.frameHeight}`
                   : "—"
               }
             />
@@ -486,14 +539,6 @@ export function Monitor({
                 onChange={setRecordingOverlays}
               />
             </div>
-            <div className="overlay-notes">
-              {(Object.keys(overlayCapabilities) as OverlayName[])
-                .filter((name) => !overlayCapabilities[name].supported)
-                .map((name) => (
-                  <small key={name}>{overlayCapabilities[name].reason}</small>
-                ))}
-            </div>
-
             <div className="action-row">
               <button
                 className="primary"

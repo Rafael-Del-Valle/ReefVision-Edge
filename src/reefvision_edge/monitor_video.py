@@ -18,12 +18,12 @@ def overlay_capabilities() -> dict[str, dict[str, object]]:
         "timer": {"supported": True, "reason": None},
         "trails": {
             "supported": False,
-            "reason": "Tracking IDs are not available for the active detector.",
+            "reason": "Tracking required",
         },
         "boxes": {"supported": True, "reason": None},
         "masks": {
             "supported": False,
-            "reason": "The active detector does not output segmentation masks.",
+            "reason": "Segmentation model required",
         },
         "labels": {"supported": True, "reason": None},
     }

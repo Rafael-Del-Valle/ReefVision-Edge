@@ -45,11 +45,11 @@ def test_overlay_capabilities_explain_unsupported_masks_and_trails() -> None:
     assert capabilities["labels"]["supported"] is True
     assert capabilities["masks"] == {
         "supported": False,
-        "reason": "The active detector does not output segmentation masks.",
+        "reason": "Segmentation model required",
     }
     assert capabilities["trails"] == {
         "supported": False,
-        "reason": "Tracking IDs are not available for the active detector.",
+        "reason": "Tracking required",
     }
 
 
@@ -63,12 +63,15 @@ def test_monitor_video_writer_creates_playable_mp4(tmp_path: Path) -> None:
 
     capture = cv2.VideoCapture(str(path))
     try:
+        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         decoded = 0
         while capture.read()[0]:
             decoded += 1
     finally:
         capture.release()
     assert decoded == 6
+    assert (width, height) == (96, 64)
 
 
 def test_monitor_video_writer_paces_sixty_fps_timestamps_to_thirty_fps(

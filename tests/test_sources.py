@@ -5,6 +5,7 @@ import io
 import platform
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 from tests.fixtures.build_video import build_mjpeg_video
@@ -18,8 +19,52 @@ from reefvision_edge.sources import (
     V4L2CameraSource,
     VideoProbe,
     WindowsCameraSource,
+    configure_windows_capture,
     probe_video,
 )
+
+
+def test_windows_capture_negotiates_a_verified_sixteen_by_nine_mode() -> None:
+    class NegotiatingCapture:
+        def __init__(self) -> None:
+            self.width = 640
+            self.height = 480
+            self.requested_widths: list[int] = []
+
+        def set(self, prop: int, value: float) -> bool:
+            if prop == cv2.CAP_PROP_FRAME_WIDTH:
+                self.width = int(value)
+                self.requested_widths.append(self.width)
+            elif prop == cv2.CAP_PROP_FRAME_HEIGHT:
+                self.height = int(value)
+            return True
+
+        def read(self):  # type: ignore[no-untyped-def]
+            if (self.width, self.height) == (1920, 1080):
+                return True, np.zeros((480, 640, 3), dtype=np.uint8)
+            return True, np.zeros((self.height, self.width, 3), dtype=np.uint8)
+
+    capture = NegotiatingCapture()
+
+    first_frame = configure_windows_capture(capture)
+
+    assert capture.requested_widths == [1920, 1280]
+    assert first_frame is not None
+    assert first_frame.shape == (720, 1280, 3)
+
+
+def test_windows_capture_keeps_actual_four_by_three_frame_when_modes_are_rejected() -> None:
+    class FourByThreeCapture:
+        def set(self, _prop: int, _value: float) -> bool:
+            return False
+
+        def read(self):  # type: ignore[no-untyped-def]
+            return True, np.zeros((480, 640, 3), dtype=np.uint8)
+
+    first_frame = configure_windows_capture(FourByThreeCapture())
+
+    assert first_frame is not None
+    assert first_frame.shape == (480, 640, 3)
 
 
 def media_store(tmp_path: Path) -> MediaStore:

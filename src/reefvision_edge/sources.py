@@ -235,6 +235,7 @@ class WindowsCameraSource:
         if not capture.isOpened():
             capture.release()
             raise SourceError(f"Camera {self.identifier} could not be opened.")
+        first_frame = configure_windows_capture(capture)
         latest: NewestFrameQueue[SourceFrame] = NewestFrameQueue(queue_size)
         stopped = threading.Event()
         producer_done = threading.Event()
@@ -243,10 +244,18 @@ class WindowsCameraSource:
 
         def produce() -> None:
             frame_index = 0
+            buffered_frame = first_frame
             try:
                 while not stopped.is_set():
-                    readable, frame = capture.read()
-                    if not readable:
+                    frame: NDArray[np.uint8] | None = None
+                    if buffered_frame is not None:
+                        readable, frame = True, buffered_frame
+                        buffered_frame = None
+                    else:
+                        readable, raw_frame = capture.read()
+                        if readable:
+                            frame = cast(NDArray[np.uint8], raw_frame)
+                    if not readable or frame is None:
                         failure.append(
                             f"Camera {self.identifier} stopped delivering frames."
                         )
@@ -255,7 +264,7 @@ class WindowsCameraSource:
                         SourceFrame(
                             frame_index=frame_index,
                             timestamp_ms=(time.perf_counter() - started) * 1000,
-                            frame=cast(NDArray[np.uint8], frame),
+                            frame=frame,
                         )
                     )
                     frame_index += 1
@@ -284,6 +293,34 @@ class WindowsCameraSource:
             stopped.set()
             capture.release()
             thread.join(timeout=2)
+
+
+WINDOWS_CAPTURE_MODES = ((1920, 1080, 30.0), (1280, 720, 30.0))
+
+
+def configure_windows_capture(
+    capture: cv2.VideoCapture,
+) -> NDArray[np.uint8] | None:
+    """Negotiate a responsive 16:9 mode and return the verified first frame."""
+    if not hasattr(capture, "set"):
+        return None
+    last_frame: NDArray[np.uint8] | None = None
+    for width, height, fps in WINDOWS_CAPTURE_MODES:
+        capture.set(
+            cv2.CAP_PROP_FOURCC,
+            cv2.VideoWriter_fourcc(*"MJPG"),  # type: ignore[attr-defined]
+        )
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        capture.set(cv2.CAP_PROP_FPS, fps)
+        readable, raw_frame = capture.read()
+        if not readable or raw_frame is None:
+            continue
+        frame = cast(NDArray[np.uint8], raw_frame)
+        last_frame = frame
+        if frame.shape[1] == width and frame.shape[0] == height:
+            return frame
+    return last_frame
 
 
 def camera_source(identifier: str) -> V4L2CameraSource | WindowsCameraSource:

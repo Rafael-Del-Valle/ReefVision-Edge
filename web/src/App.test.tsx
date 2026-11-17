@@ -133,12 +133,12 @@ function installFetch({
             timer: { supported: true, reason: null },
             trails: {
               supported: false,
-              reason: "Tracking IDs are not available for the active detector.",
+              reason: "Tracking required",
             },
             boxes: { supported: true, reason: null },
             masks: {
               supported: false,
-              reason: "The active detector does not output segmentation masks.",
+              reason: "Segmentation model required",
             },
             labels: { supported: true, reason: null },
           },
@@ -343,9 +343,9 @@ test("starting inference does not rediscover cameras", async () => {
           offline_runtime: true,
           overlay_capabilities: {
             timer: { supported: true, reason: null },
-            trails: { supported: false, reason: "Tracking is unavailable." },
+            trails: { supported: false, reason: "Tracking required" },
             boxes: { supported: true, reason: null },
-            masks: { supported: false, reason: "Masks are unavailable." },
+            masks: { supported: false, reason: "Segmentation model required" },
             labels: { supported: true, reason: null },
           },
         });
@@ -419,11 +419,11 @@ test("shows live source compute recording overlays and actual runtime metrics", 
   expect(screen.getByText("12.5 ms")).toBeVisible();
   expect(screen.getByText("18.4 ms")).toBeVisible();
   expect(screen.getAllByText("up to last 4,096 frames")).toHaveLength(2);
-  expect(screen.getByLabelText("Preview masks")).toBeDisabled();
-  expect(screen.getByLabelText("Recording trails")).toBeDisabled();
+  expect(screen.getByLabelText("Preview masks")).toBeEnabled();
+  expect(screen.getByLabelText("Recording trails")).toBeEnabled();
   expect(
-    screen.getByText("The active detector does not output segmentation masks."),
-  ).toBeVisible();
+    screen.queryByText("Segmentation model required"),
+  ).not.toBeInTheDocument();
 
   const fetchMock = vi.mocked(fetch);
   const discoveryCallsBefore = fetchMock.mock.calls.filter(([input]) =>
@@ -439,6 +439,32 @@ test("shows live source compute recording overlays and actual runtime metrics", 
       ),
     ).toHaveLength(discoveryCallsBefore + 1),
   );
+});
+
+test("persists unsupported live and recording overlay preferences independently", async () => {
+  installFetch();
+  const user = userEvent.setup();
+  const first = render(<App />);
+  await screen.findByRole("heading", { name: "Field monitor" });
+
+  await user.click(screen.getByLabelText("Preview masks"));
+  await user.click(screen.getByLabelText("Recording trails"));
+
+  expect(screen.getByLabelText("Preview masks")).toBeChecked();
+  expect(screen.getByLabelText("Preview trails")).not.toBeChecked();
+  expect(screen.getByLabelText("Recording trails")).toBeChecked();
+  expect(screen.getByLabelText("Recording masks")).not.toBeChecked();
+  expect(screen.getAllByText("Segmentation model required")).toHaveLength(1);
+  expect(screen.getAllByText("Tracking required")).toHaveLength(1);
+
+  first.unmount();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Field monitor" });
+
+  expect(screen.getByLabelText("Preview masks")).toBeChecked();
+  expect(screen.getByLabelText("Preview trails")).not.toBeChecked();
+  expect(screen.getByLabelText("Recording trails")).toBeChecked();
+  expect(screen.getByLabelText("Recording masks")).not.toBeChecked();
 });
 
 test("navigates among monitor sessions and settings with runtime state", async () => {

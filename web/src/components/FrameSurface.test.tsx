@@ -47,7 +47,7 @@ test("keeps one canvas mounted and one frame request in flight", async () => {
   );
   vi.stubGlobal(
     "createImageBitmap",
-    vi.fn(async () => ({ width: 640, height: 480, close: vi.fn() })),
+    vi.fn(async () => ({ width: 1920, height: 1080, close: vi.fn() })),
   );
 
   const view = render(
@@ -80,7 +80,7 @@ test("recovers after an initial missing frame", async () => {
   );
   vi.stubGlobal(
     "createImageBitmap",
-    vi.fn(async () => ({ width: 640, height: 480, close: vi.fn() })),
+    vi.fn(async () => ({ width: 1920, height: 1080, close: vi.fn() })),
   );
 
   render(
@@ -106,7 +106,7 @@ test("counts and draws only distinct published frame indexes", async () => {
   );
   vi.stubGlobal(
     "createImageBitmap",
-    vi.fn(async () => ({ width: 640, height: 480, close: vi.fn() })),
+    vi.fn(async () => ({ width: 1920, height: 1080, close: vi.fn() })),
   );
   try {
     render(
@@ -125,6 +125,14 @@ test("counts and draws only distinct published frame indexes", async () => {
     expect(createImageBitmap).toHaveBeenCalledTimes(1);
     expect(onTelemetry.mock.calls[0][0].displayedFps).toBeCloseTo(1);
     expect(onTelemetry.mock.calls[0][0].frameIndex).toBe(9);
+    expect(onTelemetry.mock.calls[0][0]).toMatchObject({
+      frameWidth: 1920,
+      frameHeight: 1080,
+    });
+    const canvas = screen.getByRole("img", { name: "Camera" });
+    expect(canvas).toHaveAttribute("width", "1920");
+    expect(canvas).toHaveAttribute("height", "1080");
+    expect(canvas).toHaveStyle({ aspectRatio: "1920 / 1080" });
   } finally {
     vi.useRealTimers();
   }
