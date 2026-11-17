@@ -32,6 +32,10 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
     assert model["name"] == "Tiny Coral Detector"
     assert model["provider"] == "CPUExecutionProvider"
     assert len(model["model_sha256"]) == 64
+    assert model["source_format"] == "onnx"
+    assert model["source_sha256"] == model["model_sha256"]
+    assert model["conversion"] is None
+    assert model["supported_profiles"] == ["full_frame"]
 
     source_response = client.post(
         "/api/sources/video",

@@ -197,6 +197,22 @@ class ExportService:
                 },
                 "class_map": {str(key): value for key, value in metadata.classes.items()},
                 "provider": session[5] or model[5],
+                "source_format": (
+                    metadata.conversion.source_format if metadata.conversion else "onnx"
+                ),
+                "source_sha256": (
+                    metadata.conversion.source_sha256
+                    if metadata.conversion
+                    else model[2]
+                ),
+                "conversion": (
+                    metadata.conversion.model_dump(mode="json")
+                    if metadata.conversion
+                    else None
+                ),
+                "supported_profiles": [
+                    profile.value for profile in metadata.supported_profiles
+                ],
             },
             "source": {
                 "id": source[0],

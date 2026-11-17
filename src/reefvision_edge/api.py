@@ -51,6 +51,7 @@ def error_response(status_code: int, code: str, message: str) -> JSONResponse:
 
 
 def model_response(registered: RegisteredModel) -> dict[str, object]:
+    conversion = registered.metadata.conversion
     return {
         "id": registered.id,
         "name": registered.metadata.name,
@@ -64,6 +65,12 @@ def model_response(registered: RegisteredModel) -> dict[str, object]:
         "metadata_sha256": registered.metadata_sha256,
         "provider": registered.provider,
         "available_providers": registered.available_providers,
+        "source_format": conversion.source_format if conversion else "onnx",
+        "source_sha256": conversion.source_sha256 if conversion else registered.model_sha256,
+        "conversion": conversion.model_dump(mode="json") if conversion else None,
+        "supported_profiles": [
+            profile.value for profile in registered.metadata.supported_profiles
+        ],
     }
 
 

@@ -7,9 +7,12 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from tests.test_model_registry import conversion_provenance
 from tests.test_sessions import prepared_services
 
+from reefvision_edge.domain import ModelMetadata
 from reefvision_edge.exports import ExportError, ExportService, validate_export
+from reefvision_edge.model_registry import canonical_metadata_bytes
 
 
 def completed_export(tmp_path: Path):
@@ -215,3 +218,36 @@ def test_checked_in_sample_round_trips() -> None:
     assert summary.session_id == "00000000-0000-4000-8000-000000000001"
     assert summary.frame_count == 1
     assert summary.detection_count == 1
+
+
+def test_export_includes_converted_checkpoint_provenance(tmp_path: Path) -> None:
+    database, model, _, session, exporter = completed_export(tmp_path)
+    metadata_value = model.metadata.model_dump(mode="json")
+    provenance = conversion_provenance(
+        b"trusted checkpoint", model.path.read_bytes(), ("coral", "fish")
+    )
+    metadata_value["conversion"] = provenance.model_dump(mode="json")
+    metadata_value["supported_profiles"] = ["full_frame", "thesis_tiling"]
+    metadata = ModelMetadata.model_validate(metadata_value)
+    metadata_bytes = canonical_metadata_bytes(metadata)
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE models SET metadata_json = ?, metadata_sha256 = ? WHERE id = ?",
+            (
+                metadata_bytes.decode("utf-8"),
+                __import__("hashlib").sha256(metadata_bytes).hexdigest(),
+                model.id,
+            ),
+        )
+
+    archive = exporter.build_zip(session.id)
+
+    with zipfile.ZipFile(archive) as bundle:
+        manifest = json.loads(bundle.read("manifest.json"))
+    assert manifest["model"]["source_format"] == "ultralytics_pt"
+    assert manifest["model"]["source_sha256"] == provenance.source_sha256
+    assert manifest["model"]["conversion"]["exporter_version"] == "8.4.215"
+    assert manifest["model"]["supported_profiles"] == [
+        "full_frame",
+        "thesis_tiling",
+    ]

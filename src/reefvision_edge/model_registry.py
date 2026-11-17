@@ -14,7 +14,12 @@ import onnxruntime as ort
 from pydantic import ValidationError
 
 from reefvision_edge.db import Database
-from reefvision_edge.domain import ModelMetadata, RegisteredModel
+from reefvision_edge.domain import (
+    ConversionProvenance,
+    InferenceProfile,
+    ModelMetadata,
+    RegisteredModel,
+)
 
 
 class ModelRegistrationError(ValueError):
@@ -89,6 +94,121 @@ class ModelRegistry:
                 metadata=metadata,
                 path=target / "model.onnx",
                 model_sha256=hashlib.sha256(model_bytes).hexdigest(),
+                metadata_sha256=hashlib.sha256(metadata_bytes).hexdigest(),
+                provider=session.get_providers()[0],
+                available_providers=tuple(available),
+            )
+            with self.database.connect() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO models (
+                        id, name, path, model_sha256, metadata_sha256,
+                        metadata_json, provider, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    """,
+                    (
+                        registered.id,
+                        metadata.name,
+                        str(registered.path),
+                        registered.model_sha256,
+                        registered.metadata_sha256,
+                        metadata_bytes.decode("utf-8"),
+                        registered.provider,
+                    ),
+                )
+            return registered
+        except Exception:
+            if temporary.exists():
+                shutil.rmtree(temporary)
+            if target.exists():
+                shutil.rmtree(target)
+            raise
+
+    def register_converted(
+        self,
+        checkpoint_path: Path,
+        onnx_path: Path,
+        metadata_value: Mapping[str, object] | ModelMetadata,
+        provenance: ConversionProvenance,
+        *,
+        source_config_path: Path | None = None,
+    ) -> RegisteredModel:
+        try:
+            metadata = (
+                metadata_value
+                if isinstance(metadata_value, ModelMetadata)
+                else ModelMetadata.model_validate(metadata_value)
+            )
+            metadata = metadata.model_copy(
+                update={
+                    "conversion": provenance,
+                    "supported_profiles": (
+                        InferenceProfile.FULL_FRAME,
+                        InferenceProfile.THESIS_TILING,
+                    ),
+                }
+            )
+            metadata = ModelMetadata.model_validate(metadata.model_dump(mode="json"))
+        except ValidationError as exc:
+            raise ModelRegistrationError(str(exc)) from exc
+
+        checkpoint_bytes = checkpoint_path.read_bytes()
+        model_bytes = onnx_path.read_bytes()
+        if not checkpoint_bytes:
+            raise ModelRegistrationError("The source checkpoint file is empty.")
+        if not model_bytes:
+            raise ModelRegistrationError("The derived ONNX model file is empty.")
+        if len(checkpoint_bytes) > self.max_model_bytes:
+            raise ModelRegistrationError(
+                f"The checkpoint exceeds the {self.max_model_bytes}-byte upload limit."
+            )
+        if len(model_bytes) > self.max_model_bytes:
+            raise ModelRegistrationError(
+                f"The derived ONNX model exceeds the {self.max_model_bytes}-byte upload limit."
+            )
+        source_sha256 = hashlib.sha256(checkpoint_bytes).hexdigest()
+        derived_sha256 = hashlib.sha256(model_bytes).hexdigest()
+        if source_sha256 != provenance.source_sha256:
+            raise ModelRegistrationError("The source checkpoint SHA-256 does not match provenance.")
+        if derived_sha256 != provenance.derived_sha256:
+            raise ModelRegistrationError("The derived SHA-256 does not match provenance.")
+
+        available = ort.get_available_providers()
+        provider = select_provider(available)
+        try:
+            session = ort.InferenceSession(model_bytes, providers=[provider])
+        except Exception as exc:
+            raise ModelRegistrationError(
+                f"The converted ONNX model could not be loaded: {exc}"
+            ) from exc
+        self._validate_session(session, metadata)
+
+        model_id = str(uuid.uuid4())
+        target = self.storage_dir / model_id
+        temporary = self.storage_dir / f".{model_id}.tmp"
+        metadata_bytes = canonical_metadata_bytes(metadata)
+        conversion_bytes = (
+            json.dumps(
+                provenance.model_dump(mode="json"), indent=2, sort_keys=True
+            )
+            + "\n"
+        ).encode("utf-8")
+        try:
+            temporary.mkdir(parents=True, exist_ok=False)
+            self._durable_write(temporary / "source.pt", checkpoint_bytes)
+            self._durable_write(temporary / "model.onnx", model_bytes)
+            self._durable_write(temporary / "metadata.json", metadata_bytes)
+            self._durable_write(temporary / "conversion.json", conversion_bytes)
+            if source_config_path is not None:
+                self._durable_write(
+                    temporary / "source-config.yaml", source_config_path.read_bytes()
+                )
+            temporary.replace(target)
+            registered = RegisteredModel(
+                id=model_id,
+                metadata=metadata,
+                path=target / "model.onnx",
+                model_sha256=derived_sha256,
                 metadata_sha256=hashlib.sha256(metadata_bytes).hexdigest(),
                 provider=session.get_providers()[0],
                 available_providers=tuple(available),
