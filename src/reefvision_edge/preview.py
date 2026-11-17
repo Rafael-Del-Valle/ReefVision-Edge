@@ -181,7 +181,11 @@ class LatestPreviewPublisher:
         # interval causes alternating frames to miss the deadline, collapsing
         # a smooth feed to roughly 15 FPS. Permit a small early arrival, but
         # advance the nominal phase so that the long-run rate stays bounded.
-        self.early_arrival_allowance = self.interval * 0.1
+        # DirectShow delivery is bursty even when its long-run cadence is
+        # 29.97-30 FPS. Allow up to half a frame of jitter; the phase-based
+        # deadline below still prevents this allowance from raising the
+        # sustained publication rate above max_fps.
+        self.early_arrival_allowance = self.interval * 0.5
         self.clock = clock
         self._next_publish_at = 0.0
         self._pending: _PendingPreview | None = None

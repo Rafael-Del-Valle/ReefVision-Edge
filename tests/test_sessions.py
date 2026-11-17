@@ -342,11 +342,11 @@ def test_latest_preview_publisher_limits_rate_and_flushes_newest_frame(
     )
 
     assert publisher.offer(0, 0.0, np.full((12, 18, 3), 10, dtype=np.uint8), ())
-    clock[0] += 0.010
+    clock[0] += 0.005
     assert not publisher.offer(
         1, 10.0, np.full((12, 18, 3), 20, dtype=np.uint8), ()
     )
-    clock[0] += 0.010
+    clock[0] += 0.005
     assert not publisher.offer(
         2, 20.0, np.full((12, 18, 3), 30, dtype=np.uint8), ()
     )
@@ -388,6 +388,27 @@ def test_latest_preview_publisher_does_not_halve_a_30_fps_camera() -> None:
         clock[0] += 0.033
 
     assert len(store.frame_indexes) >= 28
+
+
+def test_latest_preview_publisher_tolerates_jittery_30_fps_delivery() -> None:
+    from reefvision_edge.preview import LatestPreviewPublisher
+
+    clock = [100.0]
+    store = RecordingPreviewStore()
+    publisher = LatestPreviewPublisher(
+        store,  # type: ignore[arg-type]
+        "camera-session",
+        OverlaySettings(timer=False, boxes=False, labels=False),
+        max_fps=30.0,
+        clock=lambda: clock[0],
+    )
+    frame = np.zeros((12, 18, 3), dtype=np.uint8)
+
+    for frame_index in range(300):
+        publisher.offer(frame_index, None, frame, ())
+        clock[0] += 0.020 if frame_index % 2 == 0 else 0.047
+
+    assert len(store.frame_indexes) >= 280
 
 
 @pytest.mark.parametrize("source_interval", [0.030, 1 / 35, 1 / 60])
