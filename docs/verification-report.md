@@ -25,8 +25,8 @@ Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` lo
 
 ## Automated evidence
 
-- Backend: 91 tests pass and 3 opt-in Windows tests skip in the default run. The focused packaged-backend test also passes against the frozen executable with the checkout source moved out of reach.
-- Frontend: 5 Vitest component tests pass.
+- Backend: 135 tests pass and 4 opt-in Windows tests skip in the default run. The focused packaged model-import and frozen-backend acceptance rerun also passes all 4 gated tests.
+- Frontend: 18 Vitest component tests pass.
 - TypeScript: clean project typecheck.
 - Production dashboard: Vite build succeeds with bundled local assets.
 - Browser: 3 Playwright scenarios pass against the running production app: complete upload/run/reload/export workflow, computed theme parity, and screenshot capture.
@@ -50,6 +50,22 @@ Windows Application Control blocked NumPy `2.5.5` on this host. NumPy `2.2.6` lo
 - Timer, boxes, and labels are supported independently for live preview and saved video. Trails remain disabled until tracker IDs exist; masks remain disabled until the active model outputs segmentation masks.
 - GPU video encoding was not required for acceptance. The packaged software MP4 path remained enabled and its saved clips passed decode and overlay-manifest checks.
 - Acceptance artifacts: `.artifacts\windows-gpu-acceptance-final-f93308e\result.json`, `.artifacts\windows-gpu-acceptance-final-f93308e\fallback\fallback-result.json`, `.artifacts\windows-gpu-acceptance-final-f93308e\sustained.zip`, exported CSV files, ONNX Runtime operator profile, and decoded monitor video.
+
+## Trusted checkpoint import and thesis tiling acceptance
+
+- Tested application commit: `cc9f6c0820b48072bf3bbe6108875abc992d5c1f`.
+- Offline Windows CUDA bundle: `C:\Users\rafae\Documents\ChatGPT\ReefVision-Edge\.artifacts\reefvision-edge-offline-v0.1-cc9f6c0`. Its metadata identifies `windows-x64`, runtime profile `cuda`, and the exact tested commit. The bundle contains 374 files totaling 1,609,952,356 bytes; `SHA256SUMS.txt` has SHA-256 `0B20FD63C37063DE1B9A23AA61E1BD24F9958FD0FD03389EE09D10B38DCB2CF2`.
+- Models now provides an explicit trusted-file workflow for Ultralytics YOLOv8 detection `.pt` checkpoints. Inspection and conversion run in an isolated child process; review of the detected task and ordered class labels precedes a separate confirmation and conversion action. Unsupported tasks and architectures return actionable compatibility errors. Existing direct ONNX registration remains available.
+- The bundled converter is pinned to 48 hash-locked CPython 3.12 Windows x64 wheels. Its generated license inventory records the declared license and redistribution review for every bundled dependency and includes 278 packaged license files. Ultralytics and the project are identified as `AGPL-3.0-only`; distributable builds include the corresponding notices and source-offer information.
+- The converter preserves the source checkpoint and optional configuration next to the derived model in the local registry. It records source, configuration, and ONNX hashes; ordered class names; input shape; exporter, Python, PyTorch, ONNX, and runtime versions; preprocessing; thresholds; and output contract. Export is static-batch FP32 ONNX, opset 17, `dynamic=false`, `simplify=false`, `nms=false`, with external application NMS. Research checkpoints and media remain excluded from Git and release payloads.
+- Synthetic checkpoint: six ordered coral-state classes, 320×320 model input, `rect=false`; source SHA-256 `ADD1A93D1856E96571D2088E46FC05F15C43023EFDF3E3E581B7EF1D0835E9C5`, derived ONNX SHA-256 `C78D9F2C193A985AA0CC3C1DEAA8A074C555C7F6147D0B5CC4900138B828451F`. The frozen converter reported Ultralytics `8.4.215`, PyTorch `2.15.0+cpu`, ONNX `1.23.2`, and Python `3.12.10`.
+- Matched PyTorch/ONNX parity on the synthetic frames passed: 4,500 detections, exact class IDs and per-frame/per-class counts, maximum confidence delta `0.00001253` (tolerance `0.01`), and maximum source-coordinate box delta `0.000818 px` (tolerance `1 px`). The synthetic parity fixture uses IoU `1.0` so NMS is deliberately a no-op; class-aware duplicate merging is covered independently by tiling unit tests and awaits validation against the real thesis settings.
+- Explicit NVIDIA GPU mode selected the RTX 3090 and `CUDAExecutionProvider`. ONNX Runtime profiling recorded 175 CUDA operator events and no CPU operator events in both full-frame and tiled runs. CUDA-executed operator types included convolution, resize, activation, pooling, concatenation, reshape, transpose, split, softmax, and arithmetic operators.
+- Full-frame replay recorded data and monitor video together for 45 frames at 1280×720: input `20.452 FPS`, inference `64.543 FPS`, median latency `8.858 ms`, p95 `10.619 ms`, and 0 dropped frames. The exported CSV contained 4,500 detections; the saved monitor clip decoded to 45 frames at 1280×720.
+- Thesis tiling keeps 1920×1344 source tiles distinct from the 320×320 model input, uses 40% overlap, restores boxes to full-frame coordinates, and merges duplicates by class. The actual multi-tile 2304×1536 replay recorded 18 frames: input `5.962 FPS`, inference `24.705 FPS`, median latency `34.904 ms`, p95 `55.244 ms`, and 0 dropped frames. Its CSV contained 7,200 detections; its saved video decoded to 18 frames at 2304×1536.
+- Both runs saved the imported class names to the detection CSV and exercised the same independent recording controls as direct ONNX models. Live timer was off while the saved-video timer was on; boxes and labels were enabled. Peak per-process VRAM remains unavailable because Windows WDDM did not expose it.
+- Acceptance report: `.artifacts\synthetic-model-import-acceptance\outputs-cc9f6c0\result.json`; full-frame CSV/video/ZIP are under its `full-frame` folder, and tiled CSV/video/ZIP are under `thesis-tiling`.
+- Real-model acceptance remains open only for user-supplied thesis artifacts: the actual `best.pt`, matching `args.yaml` or `data.yaml` when available, and representative coral images or a short clip. That run must confirm the checkpoint's class order, fill any missing resize/threshold/overlap-merge settings from the thesis workflow, and pass PyTorch-versus-ONNX parity plus full-frame and tiled RTX 3090 recording acceptance.
 
 ## Installed Windows MSI acceptance
 
