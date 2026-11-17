@@ -218,6 +218,8 @@ class YoloOnnxDetector:
         self.provider = provider_assignment_summary(self.session)
         detections: list[Detection] = []
         for candidate in output:
+            if not np.isfinite(candidate).all():
+                continue
             scores = candidate[4:]
             class_id = int(np.argmax(scores))
             score = float(scores[class_id])

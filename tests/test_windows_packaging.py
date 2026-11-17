@@ -261,5 +261,20 @@ def test_converter_bundle_and_msi_fail_closed_and_exclude_research_files() -> No
     assert "reefvision-edge-model-converter.exe" in msi
     assert "converter-licenses" in msi
     assert "converter_worker.py" in spec
+    assert "collect_delvewheel_libs_directory" in spec
+    assert '"onnx", datas=datas, binaries=binaries' in spec
     assert "ULTRALYTICS_OFFLINE" in msi
     assert all(extension in offline for extension in ("*.pt", "*.pth", "*.onnx"))
+
+
+def test_offline_bundle_cleans_only_generated_python_build_outputs() -> None:
+    offline = (ROOT / "scripts" / "build_offline_bundle.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'Join-Path $repoRoot "build"' in offline
+    assert 'Join-Path $repoRoot "src\\reefvision_edge.egg-info"' in offline
+    assert "Remove-Item -LiteralPath $generatedPath -Recurse -Force" in offline
+    assert offline.index("Remove-Item -LiteralPath $generatedPath -Recurse -Force") < (
+        offline.index("-m build --wheel")
+    )

@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_delvewheel_libs_directory,
+    collect_submodules,
+)
 
 
 SPEC_DIR = Path(SPECPATH)
@@ -14,6 +18,10 @@ for package in ("ultralytics", "torch", "torchvision", "onnx", "cv2", "yaml"):
     datas.extend(package_datas)
     binaries.extend(package_binaries)
     hiddenimports.extend(package_hidden)
+
+datas, binaries = collect_delvewheel_libs_directory(
+    "onnx", datas=datas, binaries=binaries
+)
 
 analysis = Analysis(
     [str(ROOT / "src" / "reefvision_edge" / "converter_worker.py")],

@@ -64,6 +64,44 @@ def test_detector_returns_classified_boxes_in_original_frame_pixels(tmp_path: Pa
     assert first.box == pytest.approx((480.0, 280.0, 800.0, 440.0))
 
 
+def test_detector_discards_non_finite_model_outputs(tmp_path: Path) -> None:
+    model_path = build_tiny_yolo_model(tmp_path / "tiny.onnx")
+    database = Database(tmp_path / "edge.sqlite3")
+    database.initialize()
+    registered = ModelRegistry(database, tmp_path / "models").register(
+        io.BytesIO(model_path.read_bytes()), "tiny.onnx", valid_metadata()
+    )
+    detector = YoloOnnxDetector(registered)
+
+    class NonFiniteSession:
+        def run(self, *_args: object, **_kwargs: object) -> list[np.ndarray]:
+            return [
+                np.array(
+                    [
+                        [
+                            [32.0, np.nan],
+                            [32.0, 32.0],
+                            [10.0, 10.0],
+                            [10.0, 10.0],
+                            [0.9, np.nan],
+                            [0.1, 0.8],
+                        ]
+                    ],
+                    dtype=np.float32,
+                )
+            ]
+
+        def get_providers(self) -> list[str]:
+            return ["CPUExecutionProvider"]
+
+    detector.session = NonFiniteSession()  # type: ignore[assignment]
+
+    result = detector.predict(np.zeros((64, 64, 3), dtype=np.uint8))
+
+    assert len(result.detections) == 1
+    assert result.detections[0].score == pytest.approx(0.9)
+
+
 def test_detector_reselects_provider_when_registration_snapshot_is_stale(
     tmp_path: Path,
 ) -> None:

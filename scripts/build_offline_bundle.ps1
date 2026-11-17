@@ -31,6 +31,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "npm ci failed with exit code $LASTEXITCODE" }
     npm --prefix web run build
     if ($LASTEXITCODE -ne 0) { throw "npm build failed with exit code $LASTEXITCODE" }
+    $generatedPaths = @(
+        (Join-Path $repoRoot "build"),
+        (Join-Path $repoRoot "src\reefvision_edge.egg-info")
+    )
+    foreach ($generatedPath in $generatedPaths) {
+        $absoluteGeneratedPath = [System.IO.Path]::GetFullPath($generatedPath)
+        if (-not $absoluteGeneratedPath.StartsWith($repoRoot + [System.IO.Path]::DirectorySeparatorChar)) {
+            throw "Refusing to clean generated output outside the repository: $absoluteGeneratedPath"
+        }
+        if (Test-Path -LiteralPath $generatedPath) {
+            Remove-Item -LiteralPath $generatedPath -Recurse -Force
+        }
+    }
     & $python -m build --wheel --outdir (Join-Path $bundlePath "app")
     if ($LASTEXITCODE -ne 0) { throw "wheel build failed with exit code $LASTEXITCODE" }
     & $python -m pip download --dest (Join-Path $bundlePath "wheels") ".[windows-package]"
