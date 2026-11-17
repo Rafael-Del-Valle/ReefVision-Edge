@@ -515,17 +515,6 @@ class SessionService:
         compute = ComputeChoice(compute_device)
         preview = preview_overlays or OverlaySettings()
         recording = recording_overlays or OverlaySettings()
-        for name, overlays in (("preview", preview), ("recording", recording)):
-            unsupported = [
-                overlay
-                for overlay in ("trails", "masks")
-                if getattr(overlays, overlay)
-            ]
-            if unsupported:
-                raise ValueError(
-                    f"{name} overlays are not supported by the active pipeline: "
-                    + ", ".join(unsupported)
-                )
         settings = json.dumps(
             {
                 "sample_every": sample_every,

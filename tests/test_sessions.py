@@ -159,23 +159,25 @@ def test_session_settings_keep_recording_and_overlay_controls_independent(
     assert detection_rows == 0
 
 
-def test_session_rejects_overlays_the_active_pipeline_cannot_render(
+def test_session_preserves_overlay_preferences_the_active_pipeline_cannot_render(
     tmp_path: Path,
 ) -> None:
-    _, model, source, _, _, service = prepared_services(tmp_path)
+    _, model, source, _, runner, service = prepared_services(tmp_path)
+    preview = OverlaySettings(trails=True)
+    recording = OverlaySettings(masks=True)
 
-    with pytest.raises(ValueError, match="trails"):
-        service.create(
-            model.id,
-            source.id,
-            preview_overlays=OverlaySettings(trails=True),
-        )
-    with pytest.raises(ValueError, match="masks"):
-        service.create(
-            model.id,
-            source.id,
-            recording_overlays=OverlaySettings(masks=True),
-        )
+    session = service.create(
+        model.id,
+        source.id,
+        preview_overlays=preview,
+        recording_overlays=recording,
+    )
+    runner.run(session.id)
+
+    completed = service.get(session.id)
+    assert completed.status == "completed"
+    assert completed.preview_overlays == preview
+    assert completed.recording_overlays == recording
 
 
 @pytest.mark.parametrize(

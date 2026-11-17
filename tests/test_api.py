@@ -68,7 +68,7 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
             "record_monitor": False,
             "preview_overlays": {
                 "timer": False,
-                "trails": False,
+                "trails": True,
                 "boxes": True,
                 "masks": False,
                 "labels": True,
@@ -77,7 +77,7 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
                 "timer": True,
                 "trails": False,
                 "boxes": False,
-                "masks": False,
+                "masks": True,
                 "labels": True,
             },
         },
@@ -89,7 +89,9 @@ def test_api_runs_recorded_field_workflow_end_to_end(tmp_path: Path) -> None:
     assert created["record_data"] is True
     assert created["record_monitor"] is False
     assert created["preview_overlays"]["timer"] is False
+    assert created["preview_overlays"]["trails"] is True
     assert created["recording_overlays"]["boxes"] is False
+    assert created["recording_overlays"]["masks"] is True
     assert client.post(f"/api/sessions/{session_id}/start").status_code == 202
     assert client.get("/api/monitor/status").json()["state"] == "idle"
 
