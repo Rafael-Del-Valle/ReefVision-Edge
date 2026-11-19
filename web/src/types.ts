@@ -160,6 +160,12 @@ export interface Capabilities {
   overlay_capabilities: Record<OverlayName, OverlayCapability>;
 }
 
+export type FieldSwitchMode = "logging_only" | "inference_and_logging";
+
+export interface FieldSwitchPreferences {
+  mode: FieldSwitchMode;
+}
+
 export interface PublicSettings {
   bind_host: string;
   bind_port: number;
