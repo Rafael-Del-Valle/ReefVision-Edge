@@ -1,6 +1,7 @@
 import type {
   Capabilities,
   CaptureDevice,
+  FieldSwitchPreferences,
   MonitorStatus,
   ModelImportRecord,
   ModelRecord,
@@ -36,6 +37,14 @@ export const api = {
   sessions: () => request<SessionRecord[]>("/api/sessions"),
   capabilities: () => request<Capabilities>("/api/capabilities"),
   settings: () => request<PublicSettings>("/api/settings"),
+  fieldSwitchConfig: () =>
+    request<FieldSwitchPreferences>("/api/field-switch/config"),
+  saveFieldSwitchConfig: (preferences: FieldSwitchPreferences) =>
+    request<FieldSwitchPreferences>("/api/field-switch/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(preferences),
+    }),
   captureDevices: () => request<CaptureDevice[]>("/api/capture-devices"),
   monitorStatus: () => request<MonitorStatus>("/api/monitor/status"),
   selectMonitor: (sourceId: string) =>
