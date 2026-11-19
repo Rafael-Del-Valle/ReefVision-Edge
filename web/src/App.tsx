@@ -4,6 +4,7 @@ import { api } from "./api";
 import type {
   Capabilities,
   CaptureDevice,
+  FieldSwitchPreferences,
   ModelRecord,
   MonitorStatus,
   PublicSettings,
@@ -24,6 +25,7 @@ interface StationData {
   sessions: SessionRecord[];
   capabilities: Capabilities;
   settings: PublicSettings;
+  fieldSwitch: FieldSwitchPreferences;
   captureDevices: CaptureDevice[];
   monitorStatus: MonitorStatus;
 }
@@ -64,13 +66,14 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [models, sources, sessions, capabilities, settings, monitorStatus] =
+    const [models, sources, sessions, capabilities, settings, fieldSwitch, monitorStatus] =
       await Promise.all([
         api.models(),
         api.sources(),
         api.sessions(),
         api.capabilities(),
         api.settings(),
+        api.fieldSwitchConfig(),
         api.monitorStatus(),
       ]);
     const captureDevices = captureIsOwned(sessions, sources, monitorStatus)
@@ -82,6 +85,7 @@ export function App() {
       sessions,
       capabilities,
       settings,
+      fieldSwitch,
       captureDevices,
       monitorStatus,
     });
@@ -277,7 +281,17 @@ export function App() {
           />
         ) : null}
         {view === "settings" ? (
-          <Settings capabilities={data.capabilities} settings={data.settings} />
+          <Settings
+            capabilities={data.capabilities}
+            settings={data.settings}
+            fieldSwitch={data.fieldSwitch}
+            onFieldSwitchChange={async (preferences) => {
+              const saved = await api.saveFieldSwitchConfig(preferences);
+              setData((current) =>
+                current ? { ...current, fieldSwitch: saved } : current,
+              );
+            }}
+          />
         ) : null}
       </main>
       <footer>

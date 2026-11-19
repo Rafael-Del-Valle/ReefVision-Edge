@@ -14,6 +14,11 @@ from reefvision_edge.compute import ComputeChoice
 from reefvision_edge.config import Settings
 from reefvision_edge.domain import InferenceProfile, OverlaySettings, RegisteredModel
 from reefvision_edge.exports import ExportError, ExportService
+from reefvision_edge.field_controls import (
+    FieldSwitchPreferences,
+    load_field_switch_preferences,
+    save_field_switch_preferences,
+)
 from reefvision_edge.media_store import MediaStore
 from reefvision_edge.model_imports import ModelImportError, ModelImportService
 from reefvision_edge.model_registry import ModelRegistrationError, ModelRegistry
@@ -130,6 +135,14 @@ def create_api_router(
             "data_dir": str(settings.data_dir),
             "auth_required": not settings.is_loopback,
         }
+
+    @router.get("/field-switch/config")
+    def get_field_switch_config() -> FieldSwitchPreferences:
+        return load_field_switch_preferences(sessions.database)
+
+    @router.put("/field-switch/config")
+    def put_field_switch_config(request: FieldSwitchPreferences) -> FieldSwitchPreferences:
+        return save_field_switch_preferences(sessions.database, request)
 
     @router.get("/models")
     def list_models() -> list[dict[str, object]]:

@@ -1,12 +1,42 @@
-import type { Capabilities, PublicSettings } from "../types";
+import { useEffect, useState } from "react";
+
+import type {
+  Capabilities,
+  FieldSwitchMode,
+  FieldSwitchPreferences,
+  PublicSettings,
+} from "../types";
 
 export function Settings({
   capabilities,
   settings,
+  fieldSwitch,
+  onFieldSwitchChange,
 }: {
   capabilities: Capabilities;
   settings: PublicSettings;
+  fieldSwitch: FieldSwitchPreferences;
+  onFieldSwitchChange: (preferences: FieldSwitchPreferences) => Promise<void>;
 }) {
+  const [mode, setMode] = useState<FieldSwitchMode>(fieldSwitch.mode);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => setMode(fieldSwitch.mode), [fieldSwitch.mode]);
+
+  const save = async () => {
+    setSaving(true);
+    setNotice(null);
+    try {
+      await onFieldSwitchChange({ mode });
+      setNotice("Preference saved on this device for the next collection session.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not save preference.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <section className="view" aria-labelledby="settings-title">
       <div className="view-heading">
@@ -24,6 +54,38 @@ export function Settings({
         </span>
       </div>
       <div className="settings-grid">
+        <article className="panel settings-card">
+          <span className="panel-kicker">Autonomous field mode</span>
+          <h3>Physical switch action</h3>
+          <label htmlFor="field-switch-mode">When the collection switch is turned ON</label>
+          <select
+            id="field-switch-mode"
+            value={mode}
+            disabled={saving}
+            onChange={(event) => {
+              setMode(event.target.value as FieldSwitchMode);
+              setNotice(null);
+            }}
+          >
+            <option value="inference_and_logging">Start inference and detection logging</option>
+            <option value="logging_only">Start logging; leave inference running</option>
+          </select>
+          <p className="card-note">
+            In logging-only mode the camera and inference continue while logging is off.
+            In inference-and-logging mode, switching OFF stops both. The choice is saved
+            locally and applies to the next physical switch activation, not a session
+            already in progress. A Jetson hardware controller is required to operate
+            the physical switch; saving this setting does not enable hardware by itself.
+          </p>
+          <button
+            className="primary"
+            disabled={saving || mode === fieldSwitch.mode}
+            onClick={() => void save()}
+          >
+            {saving ? "Saving..." : "Save switch behavior"}
+          </button>
+          {notice ? <p role="status">{notice}</p> : null}
+        </article>
         <article className="panel settings-card">
           <span className="panel-kicker">Network</span>
           <h3>

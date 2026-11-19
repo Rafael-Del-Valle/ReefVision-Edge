@@ -107,10 +107,17 @@ function installFetch({
     updated_at: number;
   };
 } = {}): void {
+  let switchMode = "inference_and_logging";
   vi.stubGlobal(
     "fetch",
-    vi.fn((input: RequestInfo | URL) => {
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/field-switch/config")) {
+        if (init?.method === "PUT") {
+          switchMode = (JSON.parse(String(init.body)) as { mode: string }).mode;
+        }
+        return jsonResponse({ mode: switchMode });
+      }
       if (url.endsWith("/api/models")) return jsonResponse([model]);
       if (url.endsWith("/api/sources")) return jsonResponse(sources);
       if (url.endsWith("/api/sessions")) return jsonResponse(sessions);
@@ -317,6 +324,8 @@ test("starting inference does not rediscover cameras", async () => {
           kind: "camera",
           name: "Camera 1",
         });
+      if (url.endsWith("/api/field-switch/config"))
+        return jsonResponse({ mode: "inference_and_logging" });
       if (url.endsWith("/api/models")) return jsonResponse([model]);
       if (url.endsWith("/api/sources")) return jsonResponse([source]);
       if (url.endsWith("/api/sessions")) return jsonResponse([session]);
@@ -510,4 +519,38 @@ test("reports an actionable station loading failure", async () => {
     "Could not load station data",
   );
   expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
+});
+
+
+test("saves field switch behavior and restores it when the view reloads", async () => {
+  installFetch();
+  const user = userEvent.setup();
+  const first = render(<App />);
+  await screen.findByRole("heading", { name: "Field monitor" });
+  await user.click(screen.getByRole("tab", { name: "Settings" }));
+
+  const selector = screen.getByLabelText("When the collection switch is turned ON");
+  expect(selector).toHaveValue("inference_and_logging");
+  await user.selectOptions(selector, "logging_only");
+  await user.click(screen.getByRole("button", { name: "Save switch behavior" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Preference saved on this device",
+    ),
+  );
+  const putCall = vi.mocked(fetch).mock.calls.find(
+    ([input, init]) =>
+      String(input).endsWith("/api/field-switch/config") && init?.method === "PUT",
+  );
+  expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({
+    mode: "logging_only",
+  });
+
+  first.unmount();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Field monitor" });
+  await user.click(screen.getByRole("tab", { name: "Settings" }));
+  expect(screen.getByLabelText("When the collection switch is turned ON")).toHaveValue(
+    "logging_only",
+  );
 });
